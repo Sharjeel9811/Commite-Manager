@@ -18,9 +18,11 @@ enum AuthStage { loading, needsRegistration, needsOtp, locked, authenticated }
 /// [AuthService] to do those things and only remembers *what stage* the app is
 /// in and *what* the user typed. That separation is what keeps this class small.
 class AuthProvider extends ChangeNotifier {
-  AuthProvider({required AuthService authService, required SettingsRepository settingsRepository})
-    : _auth = authService,
-      _settings = settingsRepository;
+  AuthProvider({
+    required AuthService authService,
+    required SettingsRepository settingsRepository,
+  }) : _auth = authService,
+       _settings = settingsRepository;
 
   final AuthService _auth;
   final SettingsRepository _settings;
@@ -51,10 +53,12 @@ class AuthProvider extends ChangeNotifier {
   AppSettings get preferences => _preferences;
   String get fullName => _user?.fullName ?? 'there';
 
-  bool get isLockedOut => _lockedUntil != null && _lockedUntil!.isAfter(DateTime.now());
+  bool get isLockedOut =>
+      _lockedUntil != null && _lockedUntil!.isAfter(DateTime.now());
 
-  int get attemptsLeft =>
-      (AppConstants.maxPinAttempts - _failedAttempts).clamp(0, AppConstants.maxPinAttempts).toInt();
+  int get attemptsLeft => (AppConstants.maxPinAttempts - _failedAttempts)
+      .clamp(0, AppConstants.maxPinAttempts)
+      .toInt();
 
   // ------------------------------------------------------------------- Boot
 
@@ -76,6 +80,10 @@ class AuthProvider extends ChangeNotifier {
 
       if (user == null) {
         _stage = AuthStage.needsRegistration;
+        return;
+      }
+      if (!user.isVerified) {
+        _stage = AuthStage.needsOtp;
         return;
       }
       if (user.isLockedOutAt(DateTime.now())) {
@@ -112,7 +120,7 @@ class AuthProvider extends ChangeNotifier {
         pin: pin,
         confirmPin: confirmPin,
       );
-      _stage = AuthStage.authenticated;
+      _stage = AuthStage.needsOtp;
       return true;
     } on ValidationException catch (error) {
       _error = error.message;
@@ -278,7 +286,11 @@ class AuthProvider extends ChangeNotifier {
     _setBusy(true);
     _error = null;
     try {
-      await _auth.changePin(currentPin: currentPin, newPin: newPin, confirmPin: confirmPin);
+      await _auth.changePin(
+        currentPin: currentPin,
+        newPin: newPin,
+        confirmPin: confirmPin,
+      );
       return true;
     } on AppException catch (error) {
       _error = error.message;
@@ -291,11 +303,19 @@ class AuthProvider extends ChangeNotifier {
     }
   }
 
-  Future<bool> updateProfile({required String fullName, String? phoneNumber, String? email}) async {
+  Future<bool> updateProfile({
+    required String fullName,
+    String? phoneNumber,
+    String? email,
+  }) async {
     _setBusy(true);
     _error = null;
     try {
-      await _auth.updateProfile(fullName: fullName, phoneNumber: phoneNumber, email: email);
+      await _auth.updateProfile(
+        fullName: fullName,
+        phoneNumber: phoneNumber,
+        email: email,
+      );
       _user = await _auth.currentUser();
       return true;
     } on ValidationException catch (error) {
@@ -319,7 +339,11 @@ class AuthProvider extends ChangeNotifier {
         _error = 'No account found on this device.';
         return false;
       }
-      await _auth.changePin(currentPin: '', newPin: newPin, confirmPin: confirmPin);
+      await _auth.changePin(
+        currentPin: '',
+        newPin: newPin,
+        confirmPin: confirmPin,
+      );
       return true;
     } catch (error) {
       _fail(error);

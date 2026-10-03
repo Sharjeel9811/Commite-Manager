@@ -410,7 +410,7 @@ class _OtpRecoveryDialogState extends State<_OtpRecoveryDialog> {
             ),
             const SizedBox(height: AppSpacing.sm),
             Text(
-              'Check the verification gateway is running and its email settings are filled in.',
+              'Nothing arrived? Check your spam folder and wait a minute before requesting a new code.',
               style: Theme.of(context).textTheme.bodySmall,
             ),
           ],

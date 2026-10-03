@@ -141,6 +141,9 @@ class SettingsProvider extends ChangeNotifier {
     _preferences = _preferences.copyWith(lockEnabled: value);
     notifyListeners();
     await _applySecurity();
+    if (value && _authProvider?.isAuthenticated == true) {
+      await _authProvider!.lock();
+    }
   }
 
   Future<void> setLockTimeout(int minutes) async {
@@ -151,7 +154,11 @@ class SettingsProvider extends ChangeNotifier {
 
   // --------------------------------------------------------------- Currency
 
-  Future<void> setCurrency({required String code, required String symbol, int? decimals}) async {
+  Future<void> setCurrency({
+    required String code,
+    required String symbol,
+    int? decimals,
+  }) async {
     _preferences = _preferences.copyWith(
       currencyCode: code,
       currencySymbol: symbol,

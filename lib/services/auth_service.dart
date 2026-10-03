@@ -57,7 +57,10 @@ class AuthService {
       if (error != null) errors[field] = error;
     }
 
-    check(Validators.requiredText(fullName, fieldName: 'Your name', minLength: 2), 'name');
+    check(
+      Validators.requiredText(fullName, fieldName: 'Your name', minLength: 2),
+      'name',
+    );
     check(Validators.optionalPhoneNumber(phoneNumber), 'phone');
     check(Validators.email(email), 'email');
     check(Validators.pin(pin, isConfirmation: false), 'pin');
@@ -67,15 +70,20 @@ class AuthService {
       errors['confirm'] = 'The two PINs do not match';
     }
     if (errors.isNotEmpty) {
-      throw ValidationException('Please correct the highlighted fields.', fieldErrors: errors);
+      throw ValidationException(
+        'Please correct the highlighted fields.',
+        fieldErrors: errors,
+      );
     }
 
     if (await _users.exists()) {
-      throw const DuplicateException('An account already exists on this device.');
+      throw const DuplicateException(
+        'An account already exists on this device.',
+      );
     }
 
-    // Email remains a required account detail because it is used for lockout
-    // recovery, but registration itself does not send or wait for an OTP.
+    // Email remains a required account detail because it is used for account
+    // verification and lockout recovery.
     final String cleanPhone = (phoneNumber ?? '').trim();
     final String cleanEmail = email.trim();
     if (cleanEmail.isEmpty) {
@@ -95,8 +103,8 @@ class AuthService {
       pinSalt: salt,
       pinLength: pin.trim().length,
       preferredChannel: OtpChannel.email,
-      isVerified: true,
-      otpVerified: true,
+      isVerified: false,
+      otpVerified: false,
       biometricEnabled: false,
       role: UserRole.owner,
       createdAt: DateTime.now(),
@@ -116,7 +124,9 @@ class AuthService {
   Future<AppUser> unlockWithPin(String pin) async {
     final AppUser? user = await _users.getPrimary();
     if (user == null) {
-      throw const AuthException('No account has been set up on this device yet.');
+      throw const AuthException(
+        'No account has been set up on this device yet.',
+      );
     }
 
     final DateTime now = DateTime.now();
@@ -146,7 +156,9 @@ class AuthService {
         );
       }
       final int left = AppConstants.maxPinAttempts - attempts;
-      throw AuthException('Incorrect PIN. $left attempt${left == 1 ? '' : 's'} left.');
+      throw AuthException(
+        'Incorrect PIN. $left attempt${left == 1 ? '' : 's'} left.',
+      );
     }
 
     AppUser unlocked = user.copyWith(
@@ -175,7 +187,9 @@ class AuthService {
   Future<AppUser> unlockWithBiometrics() async {
     final AppUser? user = await _users.getPrimary();
     if (user == null) {
-      throw const AuthException('No account has been set up on this device yet.');
+      throw const AuthException(
+        'No account has been set up on this device yet.',
+      );
     }
     if (user.isLockedOutAt(DateTime.now())) {
       throw AuthException(
@@ -184,7 +198,9 @@ class AuthService {
         lockoutUntil: user.lockedUntil,
       );
     }
-    final bool ok = await _biometrics.authenticate(reason: 'Unlock ${user.fullName}\'s committees');
+    final bool ok = await _biometrics.authenticate(
+      reason: 'Unlock ${user.fullName}\'s committees',
+    );
     if (!ok) {
       throw const AuthException('Biometric check was not successful.');
     }
@@ -209,19 +225,28 @@ class AuthService {
     final AppUser? user = await _users.getPrimary();
     if (user == null) throw const AuthException('No account found.');
 
-    if (!await CryptoHelper.verifyPinAsync(currentPin, user.pinSalt, user.pinHash)) {
+    if (!await CryptoHelper.verifyPinAsync(
+      currentPin,
+      user.pinSalt,
+      user.pinHash,
+    )) {
       throw const AuthException('Your current PIN is not correct.');
     }
 
     final String? newError = Validators.pin(newPin, isConfirmation: false);
-    final String? confirmError = Validators.pin(confirmPin, isConfirmation: true);
+    final String? confirmError = Validators.pin(
+      confirmPin,
+      isConfirmation: true,
+    );
     if (newError != null) throw ValidationException(newError);
     if (confirmError != null) throw ValidationException(confirmError);
     if (newPin != confirmPin) {
       throw const ValidationException('The two PINs do not match.');
     }
     if (newPin == currentPin) {
-      throw const ValidationException('The new PIN must be different from the old one.');
+      throw const ValidationException(
+        'The new PIN must be different from the old one.',
+      );
     }
 
     final String salt = CryptoHelper.newSalt();
@@ -238,7 +263,11 @@ class AuthService {
     _log.info('PIN changed');
   }
 
-  Future<void> updateProfile({required String fullName, String? phoneNumber, String? email}) async {
+  Future<void> updateProfile({
+    required String fullName,
+    String? phoneNumber,
+    String? email,
+  }) async {
     final AppUser? user = await _users.getPrimary();
     if (user == null) throw const AuthException('No account found.');
 
@@ -256,7 +285,10 @@ class AuthService {
     if (phoneError != null) errors['phone'] = phoneError;
     if (emailError != null) errors['email'] = emailError;
     if (errors.isNotEmpty) {
-      throw ValidationException('Please correct the highlighted fields.', fieldErrors: errors);
+      throw ValidationException(
+        'Please correct the highlighted fields.',
+        fieldErrors: errors,
+      );
     }
 
     await _users.update(
@@ -276,7 +308,9 @@ class AuthService {
     final AppUser? user = await _users.getPrimary();
     if (user == null) throw const AuthException('No account found.');
     if (enabled && !await _biometrics.isAvailable()) {
-      throw const CapabilityException('No fingerprint or face unlock is set up on this device.');
+      throw const CapabilityException(
+        'No fingerprint or face unlock is set up on this device.',
+      );
     }
     await _users.update(user.copyWith(biometricEnabled: enabled));
   }

@@ -51,7 +51,10 @@ void main() {
   });
 
   setUp(() async {
-    db = AppDatabase(factory: databaseFactoryFfi, overridePath: inMemoryDatabasePath);
+    db = AppDatabase(
+      factory: databaseFactoryFfi,
+      overridePath: inMemoryDatabasePath,
+    );
     locator = await ServiceLocator.wire(databaseOverride: db);
     committees = locator.get<CommitteeService>();
     members = locator.get<MemberService>();
@@ -74,7 +77,9 @@ void main() {
     PaymentFrequency frequency = PaymentFrequency.monthly,
     int startMonthsAgo = 0,
   }) {
-    final DateTime start = DateTime.now().subtract(Duration(days: 30 * startMonthsAgo));
+    final DateTime start = DateTime.now().subtract(
+      Duration(days: 30 * startMonthsAgo),
+    );
     return committees.create(
       name: name,
       description: 'Test committee',
@@ -88,28 +93,60 @@ void main() {
   }
 
   group('committee creation', () {
-    test('persists the committee, its members, periods, turns and payments', () async {
-      final Committee committee = await createCommittee(name: 'Family Committee', memberCount: 4);
+    test(
+      'persists the committee, its members, periods, turns and payments',
+      () async {
+        final Committee committee = await createCommittee(
+          name: 'Family Committee',
+          memberCount: 4,
+        );
 
-      final Committee stored = await committees.getById(committee.id);
-      expect(stored.name, 'Family Committee', reason: 'the committee header must be written');
+        final Committee stored = await committees.getById(committee.id);
+        expect(
+          stored.name,
+          'Family Committee',
+          reason: 'the committee header must be written',
+        );
 
-      final List<Member> roster = await memberRepo.getByCommittee(committee.id);
-      expect(roster, hasLength(4));
+        final List<Member> roster = await memberRepo.getByCommittee(
+          committee.id,
+        );
+        expect(roster, hasLength(4));
 
-      final List<PaymentSchedule> periods = await scheduleRepo.getByCommittee(committee.id);
-      expect(periods, hasLength(4), reason: 'one period per member in a classic committee');
+        final List<PaymentSchedule> periods = await scheduleRepo.getByCommittee(
+          committee.id,
+        );
+        expect(
+          periods,
+          hasLength(4),
+          reason: 'one period per member in a classic committee',
+        );
 
-      final List<CommitteeTurn> rotation = await turnRepo.getByCommittee(committee.id);
-      expect(rotation, hasLength(4));
-      expect(rotation.map((CommitteeTurn t) => t.turnNumber).toList()..sort(), <int>[1, 2, 3, 4]);
+        final List<CommitteeTurn> rotation = await turnRepo.getByCommittee(
+          committee.id,
+        );
+        expect(rotation, hasLength(4));
+        expect(
+          rotation.map((CommitteeTurn t) => t.turnNumber).toList()..sort(),
+          <int>[1, 2, 3, 4],
+        );
 
-      final List<Payment> all = await paymentRepo.getByCommittee(committee.id);
-      expect(all, hasLength(12), reason: 'each of 4 periods is paid by the other 3 members');
-    });
+        final List<Payment> all = await paymentRepo.getByCommittee(
+          committee.id,
+        );
+        expect(
+          all,
+          hasLength(12),
+          reason: 'each of 4 periods is paid by the other 3 members',
+        );
+      },
+    );
 
     test('duration always equals the member count', () async {
-      final Committee committee = await createCommittee(name: 'Duration Rule', memberCount: 5);
+      final Committee committee = await createCommittee(
+        name: 'Duration Rule',
+        memberCount: 5,
+      );
       expect(committee.durationPeriods, 5);
       expect(committee.memberCount, 5);
     });
@@ -130,16 +167,29 @@ void main() {
 
     test('rejects a duplicate committee name', () async {
       await createCommittee(name: 'Duplicated Name');
-      await expectLater(createCommittee(name: 'Duplicated Name'), throwsA(isA<Object>()));
+      await expectLater(
+        createCommittee(name: 'Duplicated Name'),
+        throwsA(isA<Object>()),
+      );
     });
   });
 
   group('collection and rotation', () {
     test('paying everyone in period 1 releases the first turn', () async {
-      final Committee committee = await createCommittee(name: 'Rotation One', memberCount: 4);
+      final Committee committee = await createCommittee(
+        name: 'Rotation One',
+        memberCount: 4,
+      );
 
-      final List<Payment> periodOne = await paymentRepo.getByPeriod(committee.id, 1);
-      expect(periodOne, hasLength(3), reason: 'the recipient of period 1 does not pay it');
+      final List<Payment> periodOne = await paymentRepo.getByPeriod(
+        committee.id,
+        1,
+      );
+      expect(
+        periodOne,
+        hasLength(3),
+        reason: 'the recipient of period 1 does not pay it',
+      );
       expect(periodOne.every((Payment p) => !p.isPaid), isTrue);
 
       for (final Payment payment in periodOne) {
@@ -148,50 +198,95 @@ void main() {
 
       final CommitteeTurn? first = await turnRepo.getByNumber(committee.id, 1);
       expect(first, isNotNull);
-      expect(first!.isCompleted, isTrue, reason: 'a full period must release the turn');
+      expect(
+        first!.isCompleted,
+        isTrue,
+        reason: 'a full period must release the turn',
+      );
       expect(first.completedAt, isNotNull);
 
       final CommitteeTurn? second = await turnRepo.getByNumber(committee.id, 2);
-      expect(second!.status, TurnStatus.active, reason: 'the rotation must advance by one');
+      expect(
+        second!.status,
+        TurnStatus.active,
+        reason: 'the rotation must advance by one',
+      );
     });
 
     test('an incomplete period leaves the turn untouched', () async {
-      final Committee committee = await createCommittee(name: 'Partial Pay', memberCount: 4);
-      final List<Payment> periodOne = await paymentRepo.getByPeriod(committee.id, 1);
+      final Committee committee = await createCommittee(
+        name: 'Partial Pay',
+        memberCount: 4,
+      );
+      final List<Payment> periodOne = await paymentRepo.getByPeriod(
+        committee.id,
+        1,
+      );
 
       for (final Payment payment in periodOne.take(2)) {
         await payments.markPaid(paymentId: payment.id);
       }
 
       final CommitteeTurn? first = await turnRepo.getByNumber(committee.id, 1);
-      expect(first!.isCompleted, isFalse, reason: '2 of 3 paid is still not a full period');
+      expect(
+        first!.isCompleted,
+        isFalse,
+        reason: '2 of 3 paid is still not a full period',
+      );
     });
 
     test('marking a payment paid twice is refused', () async {
-      final Committee committee = await createCommittee(name: 'No Double Pay', memberCount: 4);
-      final Payment payment = (await paymentRepo.getByPeriod(committee.id, 1)).first;
+      final Committee committee = await createCommittee(
+        name: 'No Double Pay',
+        memberCount: 4,
+      );
+      final Payment payment = (await paymentRepo.getByPeriod(
+        committee.id,
+        1,
+      )).first;
 
       await payments.markPaid(paymentId: payment.id);
-      await expectLater(payments.markPaid(paymentId: payment.id), throwsA(isA<Object>()));
+      await expectLater(
+        payments.markPaid(paymentId: payment.id),
+        throwsA(isA<Object>()),
+      );
     });
 
     test('undoing a payment re-opens the turn it had released', () async {
-      final Committee committee = await createCommittee(name: 'Undo', memberCount: 3);
-      final List<Payment> periodOne = await paymentRepo.getByPeriod(committee.id, 1);
+      final Committee committee = await createCommittee(
+        name: 'Undo',
+        memberCount: 3,
+      );
+      final List<Payment> periodOne = await paymentRepo.getByPeriod(
+        committee.id,
+        1,
+      );
       for (final Payment payment in periodOne) {
         await payments.markPaid(paymentId: payment.id);
       }
-      expect((await turnRepo.getByNumber(committee.id, 1))!.isCompleted, isTrue);
+      expect(
+        (await turnRepo.getByNumber(committee.id, 1))!.isCompleted,
+        isTrue,
+      );
 
       await payments.markUnpaid(periodOne.last.id);
 
-      expect((await turnRepo.getByNumber(committee.id, 1))!.isCompleted, isFalse);
+      expect(
+        (await turnRepo.getByNumber(committee.id, 1))!.isCompleted,
+        isFalse,
+      );
     });
 
     test('closing the whole committee marks every turn completed', () async {
-      final Committee committee = await createCommittee(name: 'Full Run', memberCount: 3);
+      final Committee committee = await createCommittee(
+        name: 'Full Run',
+        memberCount: 3,
+      );
       for (int period = 1; period <= 3; period++) {
-        final List<Payment> rows = await paymentRepo.getByPeriod(committee.id, period);
+        final List<Payment> rows = await paymentRepo.getByPeriod(
+          committee.id,
+          period,
+        );
         for (final Payment payment in rows) {
           await payments.markPaid(paymentId: payment.id);
         }
@@ -201,25 +296,36 @@ void main() {
       expect(updated.status, CommitteeStatus.completed);
       expect(updated.completedTurns, 3);
 
-      final List<CommitteeTurn> rotation = await turnRepo.getByCommittee(committee.id);
+      final List<CommitteeTurn> rotation = await turnRepo.getByCommittee(
+        committee.id,
+      );
       expect(rotation.every((CommitteeTurn t) => t.isCompleted), isTrue);
     });
   });
 
   group('roster changes', () {
-    test('a member can be added and the committee grows by one period', () async {
-      final Committee committee = await createCommittee(name: 'Growing', memberCount: 3);
-      await members.add(committeeId: committee.id, name: 'Late Arrival');
+    test(
+      'a member can be added and the committee grows by one period',
+      () async {
+        final Committee committee = await createCommittee(
+          name: 'Growing',
+          memberCount: 3,
+        );
+        await members.add(committeeId: committee.id, name: 'Late Arrival');
 
-      final Committee updated = await committees.getById(committee.id);
-      expect(updated.memberCount, 4);
-      expect(updated.durationPeriods, 4);
-      expect(await scheduleRepo.getByCommittee(committee.id), hasLength(4));
-      expect(await paymentRepo.getByCommittee(committee.id), hasLength(12));
-    });
+        final Committee updated = await committees.getById(committee.id);
+        expect(updated.memberCount, 4);
+        expect(updated.durationPeriods, 4);
+        expect(await scheduleRepo.getByCommittee(committee.id), hasLength(4));
+        expect(await paymentRepo.getByCommittee(committee.id), hasLength(12));
+      },
+    );
 
     test('a member can be removed and the committee shrinks', () async {
-      final Committee committee = await createCommittee(name: 'Shrinking', memberCount: 4);
+      final Committee committee = await createCommittee(
+        name: 'Shrinking',
+        memberCount: 4,
+      );
       final List<Member> roster = await memberRepo.getByCommittee(committee.id);
       await members.remove(roster.last.id);
 
@@ -229,13 +335,36 @@ void main() {
       expect(await paymentRepo.getByCommittee(committee.id), hasLength(6));
     });
 
+    test('a member role can be changed to organizer', () async {
+      final Committee committee = await createCommittee(name: 'Organizer Role');
+      final Member member = (await memberRepo.getByCommittee(committee.id))
+          .last;
+
+      final Member updated = await members.update(
+        memberId: member.id,
+        name: member.name,
+        role: MemberRole.organizer,
+      );
+
+      expect(updated.isOrganizer, isTrue);
+      expect((await memberRepo.getById(member.id))!.isOrganizer, isTrue);
+    });
+
     test('reordering the rotation respects the UNIQUE turn constraint', () async {
-      final Committee committee = await createCommittee(name: 'Reorder Swap', memberCount: 4);
+      final Committee committee = await createCommittee(
+        name: 'Reorder Swap',
+        memberCount: 4,
+      );
       final List<Member> roster = await memberRepo.getByCommittee(committee.id);
 
       // A pure swap of turn 1 and turn 2 is the case a naive sequential UPDATE
       // cannot handle, because the first write would collide with the second.
-      final List<Member> swapped = <Member>[roster[1], roster[0], roster[2], roster[3]];
+      final List<Member> swapped = <Member>[
+        roster[1],
+        roster[0],
+        roster[2],
+        roster[3],
+      ];
       await members.reorderTurns(committee.id, swapped);
 
       final List<Member> after = await memberRepo.getByCommittee(committee.id);
@@ -249,18 +378,33 @@ void main() {
     });
 
     test('reordering a full reverse keeps every turn number unique', () async {
-      final Committee committee = await createCommittee(name: 'Reorder Reverse', memberCount: 5);
+      final Committee committee = await createCommittee(
+        name: 'Reorder Reverse',
+        memberCount: 5,
+      );
       final List<Member> roster = await memberRepo.getByCommittee(committee.id);
       await members.reorderTurns(committee.id, roster.reversed.toList());
 
       final List<Member> after = await memberRepo.getByCommittee(committee.id);
-      expect(after.map((Member m) => m.turnNumber).toList(), <int>[1, 2, 3, 4, 5]);
+      expect(after.map((Member m) => m.turnNumber).toList(), <int>[
+        1,
+        2,
+        3,
+        4,
+        5,
+      ]);
       expect(after.first.id, roster.last.id);
     });
 
     test('the roster is frozen once a payment exists', () async {
-      final Committee committee = await createCommittee(name: 'Frozen', memberCount: 4);
-      final Payment payment = (await paymentRepo.getByPeriod(committee.id, 1)).first;
+      final Committee committee = await createCommittee(
+        name: 'Frozen',
+        memberCount: 4,
+      );
+      final Payment payment = (await paymentRepo.getByPeriod(
+        committee.id,
+        1,
+      )).first;
       await payments.markPaid(paymentId: payment.id);
 
       await expectLater(
@@ -268,7 +412,9 @@ void main() {
         throwsA(isA<Object>()),
       );
       await expectLater(
-        members.remove((await memberRepo.getByCommittee(committee.id)).first.id),
+        members.remove(
+          (await memberRepo.getByCommittee(committee.id)).first.id,
+        ),
         throwsA(isA<Object>()),
       );
     });
@@ -276,26 +422,35 @@ void main() {
 
   group('queries', () {
     test('the active recipient is the first uncompleted turn', () async {
-      final Committee committee = await createCommittee(name: 'Recipient', memberCount: 4);
-      final ({Member? member, int turnNumber, double expectedAmount}) before = await turns
-          .currentRecipient(committee.id);
+      final Committee committee = await createCommittee(
+        name: 'Recipient',
+        memberCount: 4,
+      );
+      final ({Member? member, int turnNumber, double expectedAmount}) before =
+          await turns.currentRecipient(committee.id);
       expect(before.turnNumber, 1);
       expect(before.member?.name, 'Member 1');
 
-      for (final Payment payment in await paymentRepo.getByPeriod(committee.id, 1)) {
+      for (final Payment payment in await paymentRepo.getByPeriod(
+        committee.id,
+        1,
+      )) {
         await payments.markPaid(paymentId: payment.id);
       }
 
-      final ({Member? member, int turnNumber, double expectedAmount}) after = await turns
-          .currentRecipient(committee.id);
+      final ({Member? member, int turnNumber, double expectedAmount}) after =
+          await turns.currentRecipient(committee.id);
       expect(after.turnNumber, 2);
       expect(after.member?.name, 'Member 2');
     });
     test('statistics add up for a brand new committee', () async {
-      final Committee committee = await createCommittee(name: 'Stats', memberCount: 4);
-      final CommitteeStats stats = await locator.get<StatisticsService>().forCommittee(
-        committee.id,
+      final Committee committee = await createCommittee(
+        name: 'Stats',
+        memberCount: 4,
       );
+      final CommitteeStats stats = await locator
+          .get<StatisticsService>()
+          .forCommittee(committee.id);
 
       expect(stats.totalMembers, 4);
       expect(stats.totalTurns, 4);
@@ -313,14 +468,20 @@ void main() {
     });
 
     test('collecting money moves the statistics', () async {
-      final Committee committee = await createCommittee(name: 'Stats After Pay', memberCount: 4);
-      for (final Payment payment in await paymentRepo.getByPeriod(committee.id, 1)) {
+      final Committee committee = await createCommittee(
+        name: 'Stats After Pay',
+        memberCount: 4,
+      );
+      for (final Payment payment in await paymentRepo.getByPeriod(
+        committee.id,
+        1,
+      )) {
         await payments.markPaid(paymentId: payment.id);
       }
 
-      final CommitteeStats stats = await locator.get<StatisticsService>().forCommittee(
-        committee.id,
-      );
+      final CommitteeStats stats = await locator
+          .get<StatisticsService>()
+          .forCommittee(committee.id);
       expect(stats.paidCount, 3);
       expect(stats.totalCollected, 3000);
       expect(stats.completedTurns, 1);

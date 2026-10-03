@@ -57,7 +57,10 @@ void main() {
   setUp(() async {
     SharedPreferences.setMockInitialValues(<String, Object>{});
     ServiceLocator.instance.reset();
-    db = AppDatabase(factory: databaseFactoryFfi, overridePath: inMemoryDatabasePath);
+    db = AppDatabase(
+      factory: databaseFactoryFfi,
+      overridePath: inMemoryDatabasePath,
+    );
     await ServiceLocator.wire(databaseOverride: db);
 
     inbox = _Inbox();
@@ -104,8 +107,10 @@ void main() {
   group('the journey a person actually takes', () {
     test('register -> receive a code -> verify -> committee -> payment -> '
         'lock out -> recover with a genuinely sent code', () async {
-      final CommitteeService committees = ServiceLocator.instance.get<CommitteeService>();
-      final PaymentService payments = ServiceLocator.instance.get<PaymentService>();
+      final CommitteeService committees = ServiceLocator.instance
+          .get<CommitteeService>();
+      final PaymentService payments = ServiceLocator.instance
+          .get<PaymentService>();
 
       // ---- 1. Register with a 4-digit PIN ---------------------------------
       await auth.register(
@@ -115,20 +120,43 @@ void main() {
         pin: pin,
         confirmPin: pin,
       );
-      expect(inbox.sent, isEmpty, reason: 'registering on its own must not send anything');
+      expect(
+        inbox.sent,
+        isEmpty,
+        reason: 'the service leaves delivery to the auth provider',
+      );
 
       // The length is recorded so the lock screen never claims 6 when it is 4.
       final AppUser registered = (await users.getPrimary())!;
       expect(registered.pinLength, 4);
-      expect(registered.pinLength, lessThanOrEqualTo(AppConstants.maxPinLength));
-      expect(registered.otpVerified, isTrue, reason: 'registration no longer requires OTP');
-      expect(registered.isVerified, isTrue, reason: 'registration completes locally');
+      expect(
+        registered.pinLength,
+        lessThanOrEqualTo(AppConstants.maxPinLength),
+      );
+      expect(
+        registered.otpVerified,
+        isFalse,
+        reason: 'the account needs email verification',
+      );
+      expect(
+        registered.isVerified,
+        isFalse,
+        reason: 'the account needs email verification',
+      );
 
       // ---- 2. Ask for the code and receive it for real --------------------
       await auth.sendVerificationCode();
-      expect(inbox.sent, hasLength(1), reason: 'the code must actually be delivered');
+      expect(
+        inbox.sent,
+        hasLength(1),
+        reason: 'the code must actually be delivered',
+      );
       expect(inbox.lastCode, hasLength(AppConstants.otpLength));
-      expect(inbox.lastDestination, email, reason: 'codes are delivered by email');
+      expect(
+        inbox.lastDestination,
+        email,
+        reason: 'codes are delivered by email',
+      );
 
       // ---- 3. Verify it ----------------------------------------------------
       await auth.verifyAccount(inbox.lastCode);
@@ -156,7 +184,11 @@ void main() {
       final List<Payment> due = (await payments.forCommittee(committee.id))
           .where((Payment p) => !p.isPaid)
           .toList();
-      expect(due, isNotEmpty, reason: 'creating a committee schedules its payments');
+      expect(
+        due,
+        isNotEmpty,
+        reason: 'creating a committee schedules its payments',
+      );
 
       await payments.markPaid(paymentId: due.first.id);
       expect(
@@ -197,12 +229,20 @@ void main() {
       //     screen prompted for a code and never sent one, so `recoverWithOtp`
       //     found no challenge and the user was locked out permanently.
       await auth.sendVerificationCode();
-      expect(inbox.sent, hasLength(2), reason: 'recovery must send a real code');
+      expect(
+        inbox.sent,
+        hasLength(2),
+        reason: 'recovery must send a real code',
+      );
 
       final AppUser recovered = await auth.recoverWithOtp(inbox.lastCode);
       expect(recovered, isNotNull);
       final AppUser free = (await users.getPrimary())!;
-      expect(free.isLockedOutAt(DateTime.now()), isFalse, reason: 'recovery must clear the lock');
+      expect(
+        free.isLockedOutAt(DateTime.now()),
+        isFalse,
+        reason: 'recovery must clear the lock',
+      );
       expect(free.failedLoginAttempts, 0);
 
       // ---- 9. The original 4-digit PIN still opens the app -----------------
@@ -212,11 +252,17 @@ void main() {
     test('a wrong recovery code is refused and does not unlock', () async {
       await registerAndVerify();
       for (int i = 0; i < AppConstants.maxPinAttempts; i++) {
-        await expectLater(auth.unlockWithPin('0000'), throwsA(isA<AuthException>()));
+        await expectLater(
+          auth.unlockWithPin('0000'),
+          throwsA(isA<AuthException>()),
+        );
       }
       await auth.sendVerificationCode();
 
-      await expectLater(auth.recoverWithOtp('000000'), throwsA(isA<AuthException>()));
+      await expectLater(
+        auth.recoverWithOtp('000000'),
+        throwsA(isA<AuthException>()),
+      );
       expect(
         (await users.getPrimary())!.isLockedOutAt(DateTime.now()),
         isTrue,
@@ -234,25 +280,38 @@ void main() {
       );
 
       inbox.failure = 'Could not reach the gateway on this computer.';
-      await expectLater(auth.sendVerificationCode(), throwsA(isA<AuthException>()));
+      await expectLater(
+        auth.sendVerificationCode(),
+        throwsA(isA<AuthException>()),
+      );
 
-      // Registration is local, but recovery still reports delivery failures.
+      // Registration creates the account, but delivery still reports failures.
       final AppUser user = (await users.getPrimary())!;
-      expect(user.otpVerified, isTrue);
-      expect(user.isVerified, isTrue);
+      expect(user.otpVerified, isFalse);
+      expect(user.isVerified, isFalse);
     });
 
-    test('changing the PIN keeps the recorded length and retires the old PIN', () async {
-      await registerAndVerify();
+    test(
+      'changing the PIN keeps the recorded length and retires the old PIN',
+      () async {
+        await registerAndVerify();
 
-      await auth.changePin(currentPin: pin, newPin: '9274', confirmPin: '9274');
-      expect((await users.getPrimary())!.pinLength, 4);
-      expect(await auth.unlockWithPin('9274'), isNotNull);
+        await auth.changePin(
+          currentPin: pin,
+          newPin: '9274',
+          confirmPin: '9274',
+        );
+        expect((await users.getPrimary())!.pinLength, 4);
+        expect(await auth.unlockWithPin('9274'), isNotNull);
 
-      for (int i = 0; i < AppConstants.maxPinAttempts; i++) {
-        await expectLater(auth.unlockWithPin(pin), throwsA(isA<AuthException>()));
-      }
-    });
+        for (int i = 0; i < AppConstants.maxPinAttempts; i++) {
+          await expectLater(
+            auth.unlockWithPin(pin),
+            throwsA(isA<AuthException>()),
+          );
+        }
+      },
+    );
 
     test('a 6-digit PIN is honoured too, and is not confused with the 6-digit code', () async {
       await registerAndVerify(pinToUse: '927413');
@@ -260,79 +319,117 @@ void main() {
       expect(user.pinLength, 6);
 
       // The 6-digit OTP is never accepted as the PIN.
-      await expectLater(auth.unlockWithPin(inbox.lastCode), throwsA(isA<AuthException>()));
+      await expectLater(
+        auth.unlockWithPin(inbox.lastCode),
+        throwsA(isA<AuthException>()),
+      );
       expect(await auth.unlockWithPin('927413'), isNotNull);
     });
-    test('deleting the account wipes every local row and reopens registration', () async {
-      // Google Play requires a way to delete an account; this is it.
-      await registerAndVerify();
-      final CommitteeService committees = ServiceLocator.instance.get<CommitteeService>();
-      await committees.create(
-        name: 'Water Fund',
-        description: null,
-        contributionAmount: 10000,
-        frequency: PaymentFrequency.monthly,
-        startDate: DateTime.now().subtract(const Duration(days: 30)),
-        memberDrafts: <MemberDraft>[
-          const MemberDraft(name: 'Ada Lovelace'),
-          const MemberDraft(name: 'Alan Turing'),
-        ],
-      );
-      expect(await committees.getAll(), isNotEmpty);
-
-      await auth.deleteAccount();
-
-      expect(await auth.hasAccount(), isFalse, reason: 'the account must be gone');
-      expect(await committees.getAll(), isEmpty, reason: 'committees must be gone too');
-      expect(
-        await users.getPrimary(),
-        isNull,
-        reason: 'no half-deleted user row may remain',
-      );
-      final List<Map<String, Object?>> tables = await (await db.executor).rawQuery(
-        "SELECT name FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%'",
-      );
-      for (final Map<String, Object?> row in tables) {
-        final List<Map<String, Object?>> counted = await (await db.executor).rawQuery(
-          'SELECT COUNT(*) AS c FROM ${row['name']}',
+    test(
+      'deleting the account wipes every local row and reopens registration',
+      () async {
+        // Google Play requires a way to delete an account; this is it.
+        await registerAndVerify();
+        final CommitteeService committees = ServiceLocator.instance
+            .get<CommitteeService>();
+        await committees.create(
+          name: 'Water Fund',
+          description: null,
+          contributionAmount: 10000,
+          frequency: PaymentFrequency.monthly,
+          startDate: DateTime.now().subtract(const Duration(days: 30)),
+          memberDrafts: <MemberDraft>[
+            const MemberDraft(name: 'Ada Lovelace'),
+            const MemberDraft(name: 'Alan Turing'),
+          ],
         );
-        expect(counted.first['c'], 0, reason: 'table ${row['name']} must be empty after deletion');
-      }
-    });
+        expect(await committees.getAll(), isNotEmpty);
 
-    test('a locked-out user gets back in with a real code sent to their email', () async {
-      // The recovery path that matters: no phone number, no provider, no
-      // alternatives to fall back on - just one channel and it has to work.
-      await registerAndVerify();
-      for (int i = 0; i < AppConstants.maxPinAttempts; i++) {
-        await expectLater(auth.unlockWithPin('0000'), throwsA(isA<AuthException>()));
-      }
-      expect((await users.getPrimary())!.isLockedOutAt(DateTime.now()), isTrue);
+        await auth.deleteAccount();
 
-      await auth.sendVerificationCode();
-      expect(inbox.lastChannel, OtpChannel.email);
-      expect(inbox.lastDestination, email);
+        expect(
+          await auth.hasAccount(),
+          isFalse,
+          reason: 'the account must be gone',
+        );
+        expect(
+          await committees.getAll(),
+          isEmpty,
+          reason: 'committees must be gone too',
+        );
+        expect(
+          await users.getPrimary(),
+          isNull,
+          reason: 'no half-deleted user row may remain',
+        );
+        final List<Map<String, Object?>> tables = await (await db.executor)
+            .rawQuery(
+              "SELECT name FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%'",
+            );
+        for (final Map<String, Object?> row in tables) {
+          final List<Map<String, Object?>> counted = await (await db.executor)
+              .rawQuery('SELECT COUNT(*) AS c FROM ${row['name']}');
+          expect(
+            counted.first['c'],
+            0,
+            reason: 'table ${row['name']} must be empty after deletion',
+          );
+        }
+      },
+    );
 
-      expect(await auth.recoverWithOtp(inbox.lastCode), isNotNull);
-      expect((await users.getPrimary())!.isLockedOutAt(DateTime.now()), isFalse);
-    });
+    test(
+      'a locked-out user gets back in with a real code sent to their email',
+      () async {
+        // The recovery path that matters: no phone number, no provider, no
+        // alternatives to fall back on - just one channel and it has to work.
+        await registerAndVerify();
+        for (int i = 0; i < AppConstants.maxPinAttempts; i++) {
+          await expectLater(
+            auth.unlockWithPin('0000'),
+            throwsA(isA<AuthException>()),
+          );
+        }
+        expect(
+          (await users.getPrimary())!.isLockedOutAt(DateTime.now()),
+          isTrue,
+        );
 
-    test('registering without an email is refused, because there is no way in', () async {
-      // Email is the only channel, so an account without one could never
-      // receive a code. Better to say so at signup than to strand the user
-      // behind a lock screen they cannot open.
-      await expectLater(
-        auth.register(
-          fullName: 'Ada Lovelace',
-          phoneNumber: phone,
-          email: '',
-          pin: pin,
-          confirmPin: pin,
-        ),
-        throwsA(isA<ValidationException>()),
-      );
-      expect(await auth.hasAccount(), isFalse, reason: 'no half-made account may survive');
-    });
+        await auth.sendVerificationCode();
+        expect(inbox.lastChannel, OtpChannel.email);
+        expect(inbox.lastDestination, email);
+
+        expect(await auth.recoverWithOtp(inbox.lastCode), isNotNull);
+        expect(
+          (await users.getPrimary())!.isLockedOutAt(DateTime.now()),
+          isFalse,
+        );
+      },
+    );
+
+    test(
+      'registering without an email is refused, because there is no way in',
+      () async {
+        // Email is the only channel, so an account without one could never
+        // receive a code. Better to say so at signup than to strand the user
+        // behind a lock screen they cannot open.
+        await expectLater(
+          auth.register(
+            fullName: 'Ada Lovelace',
+            phoneNumber: phone,
+            email: '',
+            pin: pin,
+            confirmPin: pin,
+          ),
+          throwsA(isA<ValidationException>()),
+        );
+        expect(
+          await auth.hasAccount(),
+          isFalse,
+          reason: 'no half-made account may survive',
+        );
+      },
+    );
 
     test('registering with no phone number at all is fine', () async {
       // The phone number is now just a contact detail, so it must be optional.
@@ -392,39 +489,48 @@ void main() {
         authService: auth,
         settingsRepository: ServiceLocator.instance.get(),
       );
-      expect(reopened.user, isNull, reason: 'nothing is known until it bootstraps');
+      expect(
+        reopened.user,
+        isNull,
+        reason: 'nothing is known until it bootstraps',
+      );
       await reopened.bootstrap();
       expect(reopened.user?.primaryChannel, OtpChannel.email);
       expect(reopened.user?.verificationTarget, email);
     });
 
-    test('an account saved with a legacy SMS preference still reads back as email', () async {
-      // Rows written before SMS was removed store 'sms'. They have to keep
-      // loading, and they must not resurrect a channel that no longer exists.
-      await auth.register(
-        fullName: 'Ada Lovelace',
-        phoneNumber: phone,
-        email: email,
-        pin: pin,
-        confirmPin: pin,
-      );
-      await (await db.database).update(
-        'users',
-        <String, Object?>{'preferred_otp_channel': 'sms'},
-      );
+    test(
+      'an account saved with a legacy SMS preference still reads back as email',
+      () async {
+        // Rows written before SMS was removed store 'sms'. They have to keep
+        // loading, and they must not resurrect a channel that no longer exists.
+        await auth.register(
+          fullName: 'Ada Lovelace',
+          phoneNumber: phone,
+          email: email,
+          pin: pin,
+          confirmPin: pin,
+        );
+        await (await db.database).update('users', <String, Object?>{
+          'preferred_otp_channel': 'sms',
+        });
 
-      final AppUser user = (await users.getPrimary())!;
-      expect(user.preferredChannel, OtpChannel.email);
-      expect(user.primaryChannel, OtpChannel.email);
-      expect(user.verificationTarget, email);
-    });
+        final AppUser user = (await users.getPrimary())!;
+        expect(user.preferredChannel, OtpChannel.email);
+        expect(user.primaryChannel, OtpChannel.email);
+        expect(user.verificationTarget, email);
+      },
+    );
   });
 
   group('the screens read the same truth as the database', () {
     test('history and the dashboard reflect a real payment', () async {
-      final CommitteeService committees = ServiceLocator.instance.get<CommitteeService>();
-      final PaymentService payments = ServiceLocator.instance.get<PaymentService>();
-      final StatisticsService statistics = ServiceLocator.instance.get<StatisticsService>();
+      final CommitteeService committees = ServiceLocator.instance
+          .get<CommitteeService>();
+      final PaymentService payments = ServiceLocator.instance
+          .get<PaymentService>();
+      final StatisticsService statistics = ServiceLocator.instance
+          .get<StatisticsService>();
 
       final Committee committee = await committees.create(
         name: 'School Fees',
@@ -442,11 +548,19 @@ void main() {
           .toList();
       await payments.markPaid(paymentId: due.first.id);
 
-      final HistoryProvider history = HistoryProvider(statisticsService: statistics);
+      final HistoryProvider history = HistoryProvider(
+        statisticsService: statistics,
+      );
       await history.load();
-      expect(history.all, isNotEmpty, reason: 'a paid row must reach the history screen');
+      expect(
+        history.all,
+        isNotEmpty,
+        reason: 'a paid row must reach the history screen',
+      );
 
-      final StatisticsProvider dashboard = StatisticsProvider(statisticsService: statistics);
+      final StatisticsProvider dashboard = StatisticsProvider(
+        statisticsService: statistics,
+      );
       await dashboard.load();
       expect(dashboard.stats, isNotNull);
       expect(dashboard.stats!.totalCollected, greaterThan(0));
@@ -478,7 +592,8 @@ class _Inbox implements OtpSender {
     required String purpose,
   }) async {
     final String? problem = failure;
-    if (problem != null) return OtpDeliveryResult(success: false, error: problem);
+    if (problem != null)
+      return OtpDeliveryResult(success: false, error: problem);
     lastDestination = destination;
     lastChannel = OtpChannel.email;
     sent.add('${_random.nextInt(900000) + 100000}');
@@ -491,10 +606,10 @@ class _Inbox implements OtpSender {
     required String code,
   }) async {
     final String? problem = failure;
-    if (problem != null) return OtpVerificationResult(success: false, error: problem);
-    final bool ok = sent.isNotEmpty &&
-        code == sent.last &&
-        destination == lastDestination;
+    if (problem != null)
+      return OtpVerificationResult(success: false, error: problem);
+    final bool ok =
+        sent.isNotEmpty && code == sent.last && destination == lastDestination;
     if (!ok) {
       return const OtpVerificationResult(
         success: false,
