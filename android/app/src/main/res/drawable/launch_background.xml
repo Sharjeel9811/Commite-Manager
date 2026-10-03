@@ -1,0 +1,16 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Pre-Android-12 launch splash.
+
+  The brand gradient with the mark centred, so the window the user sees while
+  the Flutter engine warms up already looks like this app. `values-night` uses
+  the same drawable, so only the Flutter-side theme differs in dark mode.
+-->
+<layer-list xmlns:android="http://schemas.android.com/apk/res/android">
+    <item android:drawable="@drawable/ic_launcher_background" />
+    <item>
+        <bitmap
+            android:gravity="center"
+            android:src="@drawable/ic_launcher_foreground" />
+    </item>
+</layer-list>

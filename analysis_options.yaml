@@ -1,0 +1,31 @@
+include: package:flutter_lints/flutter.yaml
+
+analyzer:
+  exclude:
+    - build/**
+    - android/**
+    - windows/**
+
+linter:
+  rules:
+    # Services take their collaborators through public named parameters and
+    # assign them to private final fields, which is the standard "constructor
+    # injection" shape. The lint would ask for `required this._calculator`, but
+    # a named parameter starting with an underscore cannot be passed across
+    # library boundaries, so that suggestion would break every call site.
+    prefer_initializing_formals: false
+
+    # Extra rules beyond flutter_lints that this codebase deliberately holds to.
+    always_declare_return_types: true
+    avoid_empty_else: true
+    avoid_slow_async_io: true
+    cancel_subscriptions: true
+    close_sinks: true
+    directives_ordering: true
+    prefer_final_in_for_each: true
+    prefer_final_locals: true
+    require_trailing_commas: true
+    sort_pub_dependencies: false
+    unawaited_futures: true
+    unnecessary_parenthesis: true
+    use_build_context_synchronously: true

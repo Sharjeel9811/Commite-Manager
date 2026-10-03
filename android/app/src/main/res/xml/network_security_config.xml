@@ -1,0 +1,20 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+    Release network policy: HTTPS only, and only the system trust store.
+
+    The app talks to exactly one host - the Supabase project - over TLS, and
+    every other feature runs against local SQLite. There is no development
+    server, no local gateway and no cleartext exception in a shipped build, so
+    an attacker who takes the phone offline gains nothing.
+
+    The debug variant overrides this file (see
+    android/app/src/debug/res/xml/network_security_config.xml) to allow
+    cleartext to a machine on the local network.
+-->
+<network-security-config>
+    <base-config cleartextTrafficPermitted="false">
+        <trust-anchors>
+            <certificates src="system" />
+        </trust-anchors>
+    </base-config>
+</network-security-config>

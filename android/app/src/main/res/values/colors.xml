@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!--
+      The brand indigo, kept in one place so the launcher icon, the launch
+      splash and the Flutter Material theme cannot drift apart. Mirrors
+      `AppColors.brandIndigo` in `lib/core/theme/app_colors.dart`.
+    -->
+    <color name="brand_indigo">#4F46E5</color>
+</resources>

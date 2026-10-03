@@ -1,0 +1,18 @@
+# Release signing for Google Play uploads.
+#
+# Copy this file to `key.properties` in the same folder and fill in the real
+# values, then create the keystore itself with:
+#
+#   keytool -genkeypair -v \
+#     -keystore upload-keystore.jks \
+#     -alias upload \
+#     -keyalg RSA -keysize 2048 -validity 10000
+#
+# `key.properties` and the `.jks` are both in .gitignore. Back them up somewhere
+# safe and private: if you lose them you can never publish an update to this
+# listing again.
+
+storeFile=../upload-keystore.jks
+storePassword=
+keyAlias=upload
+keyPassword=

@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!--
+      The launcher label lives here rather than in the manifest so the name is
+      defined once. Localised copies go in `values-<locale>/strings.xml`; that
+      is the only thing Google Play needs to show a translated app name without
+      shipping a second APK.
+    -->
+    <string name="app_name">Committee Manager</string>
+</resources>
