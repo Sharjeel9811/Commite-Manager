@@ -41,10 +41,12 @@ function Find-Tool([string]$Name, [string[]]$Candidates) {
 $Adb     = Find-Tool 'adb' @(
     'C:\src\android-sdk\platform-tools\adb.exe',
     "$env:LOCALAPPDATA\Android\Sdk\platform-tools\adb.exe",
+    "$env:ANDROID_SDK_ROOT\platform-tools\adb.exe",
     "$env:ANDROID_HOME\platform-tools\adb.exe"
 )
 $Flutter = Find-Tool 'flutter' @(
     'C:\src\flutter\bin\flutter.bat',
+    "$env:FLUTTER_ROOT\bin\flutter.bat",
     'C:\src\flutter\bin\flutter'
 )
 

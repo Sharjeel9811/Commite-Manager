@@ -168,6 +168,7 @@ class _CreateCommitteeScreenState extends State<CreateCommitteeScreen> {
               TextFormField(
                 controller: _name,
                 textCapitalization: TextCapitalization.words,
+                autovalidateMode: AutovalidateMode.onUserInteraction,
                 decoration: const InputDecoration(
                   labelText: 'Committee name',
                   hintText: 'e.g. Office Bachat Committee',

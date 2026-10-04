@@ -18,6 +18,7 @@ import '../repositories/interfaces/settings_repository.dart';
 import '../repositories/interfaces/turn_repository.dart';
 import '../repositories/interfaces/user_repository.dart';
 import '../services/auth_service.dart';
+import '../services/cloud_sync_service.dart';
 import '../services/committee_service.dart';
 import '../services/demo_data_service.dart';
 import '../services/implementations/gateway_otp_sender.dart';
@@ -97,6 +98,9 @@ class ServiceLocator {
 
   void _buildInfrastructure(AppDatabase? override) {
     register<AppDatabase>(override ?? AppDatabase());
+    final CloudSyncService cloudSync = CloudSyncService(get<AppDatabase>());
+    register<CloudSyncService>(cloudSync);
+    get<AppDatabase>().onDataChanged = cloudSync.push;
     register<PaymentCalculator>(const PaymentCalculator());
     final LocalNotificationService notifications = LocalNotificationService();
     register<LocalNotificationService>(notifications);
@@ -292,6 +296,7 @@ class ServiceLocator {
         otpService: get<OtpService>(),
         biometricService: get<BiometricService>(),
         database: get<AppDatabase>(),
+        cloudSync: get<CloudSyncService>(),
       ),
     );
   }

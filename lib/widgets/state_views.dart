@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../core/theme/app_colors.dart';
+import 'app_logo.dart';
 
 /// The "nothing here yet" state.
 ///
@@ -196,26 +197,7 @@ class _SplashBodyState extends State<SplashBody> with SingleTickerProviderStateM
           children: <Widget>[
             ScaleTransition(
               scale: _scaleIn,
-              child: Container(
-                width: 96,
-                height: 96,
-                decoration: BoxDecoration(
-                  gradient: const LinearGradient(
-                    colors: AppColors.primaryGradient,
-                    begin: Alignment.topLeft,
-                    end: Alignment.bottomRight,
-                  ),
-                  borderRadius: BorderRadius.circular(28),
-                  boxShadow: <BoxShadow>[
-                    BoxShadow(
-                      color: AppColors.brandIndigo.withValues(alpha: 0.35),
-                      blurRadius: 24,
-                      offset: const Offset(0, 10),
-                    ),
-                  ],
-                ),
-                child: const Icon(Icons.groups_rounded, size: 52, color: Colors.white),
-              ),
+              child: const AppLogo(),
             ),
             const SizedBox(height: AppSpacing.xl),
             Text('Committee Manager', style: theme.textTheme.headlineSmall),

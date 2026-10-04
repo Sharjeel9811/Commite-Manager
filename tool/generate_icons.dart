@@ -12,8 +12,9 @@ import 'dart:math' as math;
 import 'package:image/image.dart' as img;
 
 /// The brand indigo the app already uses in its Material theme.
-const _indigoTop = <int>[0xFF, 0x63, 0x6F, 0xF1];
-const _indigoBottom = <int>[0xFF, 0x43, 0x38, 0xCA];
+// `setPixelRgba` expects red, green, blue, alpha.
+const _indigoTop = <int>[0x63, 0x6F, 0xF1, 0xFF];
+const _indigoBottom = <int>[0x43, 0x38, 0xCA, 0xFF];
 const _white = <int>[0xFF, 0xFF, 0xFF, 0xFF];
 
 /// Launcher densities. Android expects the icon at these exact pixel sizes.
@@ -86,7 +87,7 @@ void main() {
 /// circular or squircle mask applied later.
 img.Image _renderLegacy(int size, {bool opaque = false}) {
   final img.Image canvas = _renderGradient(size, opaque: opaque);
-  _paintMark(canvas, center: size / 2, radius: size * 0.34, ring: size * 0.058);
+  _paintMark(canvas, center: size / 2, radius: size * 0.34);
   return canvas;
 }
 
@@ -104,7 +105,7 @@ img.Image _renderRound(int size, {bool opaque = false}) {
     }
   }
   // Slightly smaller mark so it is not clipped by the circle's edge.
-  _paintMark(canvas, center: c, radius: size * 0.32, ring: size * 0.055);
+  _paintMark(canvas, center: c, radius: size * 0.32);
   return canvas;
 }
 
@@ -114,7 +115,7 @@ img.Image _renderForeground(int size) {
   // The safe zone is the middle 72/108 of the canvas, so the mark is drawn
   // against that rather than the full bitmap.
   final double safe = size * (72 / 108);
-  _paintMark(canvas, center: size / 2, radius: safe * 0.36, ring: safe * 0.062);
+  _paintMark(canvas, center: size / 2, radius: safe * 0.36);
   return canvas;
 }
 
@@ -138,28 +139,23 @@ img.Image _renderGradient(int size, {bool opaque = false}) {
   return canvas;
 }
 
-/// A ring of members with a filled pot in the middle.
-void _paintMark(img.Image canvas, {required double center, required double radius, required double ring}) {
-  const int members = 7;
-  const double startAngle = -math.pi / 2;
+/// Three committee members standing together.
+void _paintMark(img.Image canvas, {required double center, required double radius}) {
+  _paintMember(canvas, center - radius * 0.52, center + radius * 0.05, radius * 0.22, radius * 0.55);
+  _paintMember(canvas, center + radius * 0.52, center + radius * 0.05, radius * 0.22, radius * 0.55);
+  _paintMember(canvas, center, center - radius * 0.03, radius * 0.31, radius * 0.78);
+}
 
-  // The pot: a solid disc with a smaller ring cut out of it, so it reads as a
-  // coin rather than a dot at small sizes.
-  _fillCircle(canvas, center, center, radius * 0.42, _white);
-  _strokeCircle(canvas, center, center, radius * 0.20, 1.0, _withAlpha(_indigoBottom, 0));
-
-  // The members sit on the orbit around the pot.
-  final double memberRadius = radius * 0.115;
-  for (int i = 0; i < members; i++) {
-    final double angle = startAngle + (i * 2 * math.pi / members);
-    final double x = center + radius * math.cos(angle);
-    final double y = center + radius * math.sin(angle);
-    _fillCircle(canvas, x, y, memberRadius, _white);
-  }
-
-  // A thin ring ties the members to the pot and keeps the mark from looking
-  // like loose confetti when it is only 48 pixels across.
-  _strokeCircle(canvas, center, center, radius, ring, _white);
+void _paintMember(img.Image canvas, double cx, double cy, double headRadius, double bodyWidth) {
+  _fillCircle(canvas, cx, cy - headRadius * 1.15, headRadius, _white);
+  _fillRect(
+    canvas,
+    cx - bodyWidth / 2,
+    cy + headRadius * 0.25,
+    cx + bodyWidth / 2,
+    cy + headRadius * 1.95,
+    _white,
+  );
 }
 
 void _fillCircle(img.Image canvas, double cx, double cy, double r, List<int> color) {
@@ -176,6 +172,18 @@ void _fillCircle(img.Image canvas, double cx, double cy, double r, List<int> col
       if (distance <= r) {
         canvas.setPixelRgba(x, y, color[0], color[1], color[2], color[3]);
       }
+    }
+  }
+}
+
+void _fillRect(img.Image canvas, double left, double top, double right, double bottom, List<int> color) {
+  final int minX = math.max(0, left.floor());
+  final int maxX = math.min(canvas.width - 1, right.ceil());
+  final int minY = math.max(0, top.floor());
+  final int maxY = math.min(canvas.height - 1, bottom.ceil());
+  for (int y = minY; y <= maxY; y++) {
+    for (int x = minX; x <= maxX; x++) {
+      canvas.setPixelRgba(x, y, color[0], color[1], color[2], color[3]);
     }
   }
 }
@@ -199,8 +207,6 @@ void _strokeCircle(img.Image canvas, double cx, double cy, double r, double thic
     }
   }
 }
-
-List<int> _withAlpha(List<int> color, int alpha) => <int>[color[0], color[1], color[2], alpha];
 
 int _mix(int from, int to, double t) => (from + (to - from) * t).round().clamp(0, 255);
 

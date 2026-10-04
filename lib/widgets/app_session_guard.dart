@@ -8,6 +8,7 @@ import '../core/constants/app_routes.dart';
 import '../core/utils/logger.dart';
 import '../di/service_locator.dart';
 import '../providers/auth_provider.dart';
+import '../services/cloud_sync_service.dart';
 import '../services/interfaces/notification_service.dart';
 
 /// Owns the two decisions that cannot live inside a screen: how long an
@@ -93,6 +94,9 @@ class _AppSessionGuardState extends State<AppSessionGuard> with WidgetsBindingOb
     switch (state) {
       case AppLifecycleState.paused:
       case AppLifecycleState.hidden:
+        if (_auth?.isAuthenticated ?? false) {
+          _syncBeforeBackground();
+        }
         // A second pause (notification shade, rotation) must not reset the clock.
         _backgroundedAt ??= _now;
         _idleTimer?.cancel();
@@ -106,10 +110,19 @@ class _AppSessionGuardState extends State<AppSessionGuard> with WidgetsBindingOb
           _lock();
           return;
         }
+
         _restartIdleTimer();
       case AppLifecycleState.inactive:
       case AppLifecycleState.detached:
         break;
+    }
+  }
+
+  Future<void> _syncBeforeBackground() async {
+    try {
+      await ServiceLocator.instance.get<CloudSyncService>().push();
+    } catch (error, stackTrace) {
+      _log.error('Cloud backup failed while app was backgrounded', error, stackTrace);
     }
   }
 

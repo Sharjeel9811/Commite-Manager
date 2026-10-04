@@ -132,7 +132,9 @@ class GatewayOtpSender implements OtpSender {
 
       if (response.statusCode == 200) {
         _log.info('OTP verified by gateway for ${_mask(destination)}');
-        return const OtpVerificationResult(success: true);
+        final Object? decoded = jsonDecode(response.body);
+        final String? token = decoded is Map<String, Object?> ? decoded['accessToken'] as String? : null;
+        return OtpVerificationResult(success: true, accessToken: token);
       }
 
       return OtpVerificationResult(

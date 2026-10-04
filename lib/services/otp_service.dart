@@ -17,7 +17,7 @@ import 'interfaces/otp_sender.dart';
 /// expiry, attempt counting, and invalidating old codes as soon as a new one is
 /// requested.
 class OtpService {
-  const OtpService({
+  OtpService({
     required OtpRepository otpRepository,
     required UserRepository userRepository,
     required OtpSender sender,
@@ -28,6 +28,9 @@ class OtpService {
   final OtpRepository _otps;
   final UserRepository _users;
   final OtpSender _sender;
+  String? _lastAccessToken;
+
+  String? get lastAccessToken => _lastAccessToken;
 
   static const AppLogger _log = AppLogger('OtpService');
 
@@ -120,6 +123,7 @@ class OtpService {
       );
     }
 
+    _lastAccessToken = result.accessToken;
     await _otps.markConsumed(challenge.id, DateTime.now());
     _log.info('OTP verified for $userId');
   }

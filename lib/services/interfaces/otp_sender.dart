@@ -11,12 +11,13 @@ class OtpDeliveryResult {
 
 /// The outcome of "we asked the provider to check a submitted code".
 class OtpVerificationResult {
-  const OtpVerificationResult({required this.success, this.error});
+  const OtpVerificationResult({required this.success, this.error, this.accessToken});
 
   final bool success;
 
   /// Safe, user-facing text when [success] is false.
   final String? error;
+  final String? accessToken;
 }
 
 /// Delivers and verifies one-time passwords.

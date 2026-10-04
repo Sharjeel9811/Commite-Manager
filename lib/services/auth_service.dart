@@ -7,6 +7,7 @@ import '../database/app_database.dart';
 import '../models/app_user.dart';
 import '../models/enums.dart';
 import '../repositories/interfaces/user_repository.dart';
+import 'cloud_sync_service.dart';
 import 'implementations/supabase_service.dart';
 import 'interfaces/biometric_service.dart';
 import 'otp_service.dart';
@@ -22,15 +23,18 @@ class AuthService {
     required OtpService otpService,
     required BiometricService biometricService,
     required AppDatabase database,
+    CloudSyncService? cloudSync,
   }) : _users = userRepository,
        _otps = otpService,
        _biometrics = biometricService,
-       _database = database;
+       _database = database,
+       _cloudSync = cloudSync;
 
   final UserRepository _users;
   final OtpService _otps;
   final BiometricService _biometrics;
   final AppDatabase _database;
+  final CloudSyncService? _cloudSync;
 
   static const AppLogger _log = AppLogger('AuthService');
 
@@ -340,6 +344,11 @@ class AuthService {
     final AppUser? user = await _users.getPrimary();
     if (user == null) throw const AuthException('No account found.');
     await _otps.verify(userId: user.id, code: code);
+    final String? token = _otps.lastAccessToken;
+    if (token != null) {
+      await _cloudSync?.saveAccessToken(token);
+      await _cloudSync?.pull();
+    }
     final AppUser recovered = user.copyWith(
       failedLoginAttempts: 0,
       clearLock: true,
@@ -359,6 +368,11 @@ class AuthService {
     final AppUser? user = await _users.getPrimary();
     if (user == null) throw const AuthException('No account found.');
     await _otps.verify(userId: user.id, code: code);
+    final String? token = _otps.lastAccessToken;
+    if (token != null) {
+      await _cloudSync?.saveAccessToken(token);
+      await _cloudSync?.pull();
+    }
     await _otps.markAccountVerified(user.id);
     _log.info('Account verified for ${user.id}');
     return (await _users.getById(user.id))!;

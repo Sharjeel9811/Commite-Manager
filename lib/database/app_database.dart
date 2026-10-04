@@ -25,6 +25,7 @@ class AppDatabase {
   Database? _db;
   Completer<Database>? _opening;
   Transaction? _activeTransaction;
+  Future<void> Function()? onDataChanged;
 
   /// The handle a repository should run its statement on.
   ///
@@ -85,6 +86,53 @@ class AppDatabase {
     return directory;
   }
 
+  /// Exports user-owned business data without PIN hashes or OTP records.
+  Future<Map<String, List<Map<String, Object?>>>> exportCloudData() async {
+    final DatabaseExecutor db = await executor;
+    final Map<String, List<Map<String, Object?>>> result = <String, List<Map<String, Object?>>>{};
+    for (final String table in <String>[
+      DbSchema.committees,
+      DbSchema.members,
+      DbSchema.schedules,
+      DbSchema.payments,
+      DbSchema.turns,
+    ]) {
+      result[table] = await db.query(table);
+    }
+    return result;
+  }
+
+  /// Replaces business data after a verified cloud restore.
+  Future<void> replaceCloudData(Map<String, dynamic> data) async {
+    final Database db = await database;
+    await db.transaction((Transaction txn) async {
+      for (final String table in <String>[
+        DbSchema.payments,
+        DbSchema.turns,
+        DbSchema.schedules,
+        DbSchema.members,
+        DbSchema.committees,
+      ]) {
+        await txn.delete(table);
+      }
+      for (final String table in <String>[
+        DbSchema.committees,
+        DbSchema.members,
+        DbSchema.schedules,
+        DbSchema.payments,
+        DbSchema.turns,
+      ]) {
+        final Object? rows = data[table];
+        if (rows is! List) continue;
+        for (final Object? row in rows) {
+          if (row is Map) {
+            await txn.insert(table, Map<String, Object?>.from(row));
+          }
+        }
+      }
+    });
+  }
+
   /// Foreign keys are OFF by default in SQLite — they must be switched on for
   /// every single connection, otherwise `ON DELETE CASCADE` silently does
   /// nothing and the data ends up inconsistent.
@@ -141,7 +189,7 @@ class AppDatabase {
     }
     final Database db = await database;
     try {
-      return await db.transaction<T>((Transaction txn) async {
+      final T result = await db.transaction<T>((Transaction txn) async {
         _activeTransaction = txn;
         try {
           return await action(txn);
@@ -149,6 +197,8 @@ class AppDatabase {
           _activeTransaction = null;
         }
       });
+      unawaited(_notifyDataChanged());
+      return result;
     } on DatabaseException {
       rethrow;
     } catch (error) {
@@ -157,6 +207,17 @@ class AppDatabase {
         'The database could not complete this operation. Nothing was saved.',
         details: error.toString(),
       );
+    }
+
+  }
+
+  Future<void> _notifyDataChanged() async {
+    final Future<void> Function()? callback = onDataChanged;
+    if (callback == null) return;
+    try {
+      await callback();
+    } catch (error, stackTrace) {
+      _log.error('Cloud backup failed after a database change', error, stackTrace);
     }
   }
 
