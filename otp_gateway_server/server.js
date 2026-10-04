@@ -24,6 +24,7 @@ const helmet    = require('helmet');
 const rateLimit = require('express-rate-limit');
 const nodemailer = require('nodemailer');
 const { Redis } = require('@upstash/redis');
+const mongo = require('./mongo');
 
 const app = express();
 
@@ -45,15 +46,22 @@ const SEND_RATE_MAX        = 3;        // max sends per email per window
 
 const ALLOWED_ORIGINS = (process.env.ALLOWED_ORIGINS || '*')
   .split(',').map(s => s.trim()).filter(Boolean);
+const SYNC_SECRET = process.env.SYNC_SECRET || OTP_SECRET;
+const SYNC_TOKEN_SECONDS = 60 * 60 * 24 * 30;
 
 // ─────────────────────────────────────────────────────── Upstash Redis client
 // Reads UPSTASH_REDIS_REST_URL and UPSTASH_REDIS_REST_TOKEN from env.
 // These are set automatically if you connect Upstash via the Vercel integration,
 // or manually if you paste them from the Upstash dashboard.
-const redis = new Redis({
-  url:   process.env.UPSTASH_REDIS_REST_URL,
-  token: process.env.UPSTASH_REDIS_REST_TOKEN,
-});
+const redisUrl = process.env.UPSTASH_REDIS_REST_URL || '';
+const redisToken = process.env.UPSTASH_REDIS_REST_TOKEN || '';
+const redisConfigured =
+  redisUrl.startsWith('https://') &&
+  redisToken.length > 0 &&
+  !redisUrl.includes('REPLACE_WITH');
+const redis = redisConfigured
+  ? new Redis({ url: redisUrl, token: redisToken })
+  : null;
 
 // Redis key helpers — all keys are namespaced so they never clash
 const challengeKey = email => `otp:challenge:${email}`;
@@ -202,13 +210,39 @@ function normalise(email) {
   return String(email || '').trim().toLowerCase();
 }
 
+function encodeToken(email) {
+  const payload = Buffer.from(JSON.stringify({
+    email,
+    exp: Math.floor(Date.now() / 1000) + SYNC_TOKEN_SECONDS,
+  })).toString('base64url');
+  const signature = crypto.createHmac('sha256', SYNC_SECRET).update(payload).digest('base64url');
+  return `${payload}.${signature}`;
+}
+
+function verifiedEmail(req, res, next) {
+  const header = req.get('authorization') || '';
+  const token = header.startsWith('Bearer ') ? header.substring(7) : '';
+  const parts = token.split('.');
+  if (parts.length !== 2) return res.status(401).json({ error: 'Cloud sync authentication required.' });
+  try {
+    const expected = crypto.createHmac('sha256', SYNC_SECRET).update(parts[0]).digest('base64url');
+    if (!secureEqual(parts[1], expected)) throw new Error('bad signature');
+    const payload = JSON.parse(Buffer.from(parts[0], 'base64url').toString('utf8'));
+    if (!payload.email || payload.exp < Math.floor(Date.now() / 1000)) throw new Error('expired');
+    req.syncEmail = payload.email;
+    return next();
+  } catch (_) {
+    return res.status(401).json({ error: 'Cloud sync session is invalid or expired.' });
+  }
+}
+
 // ─────────────────────────────────────────────────────────────── Routes
 
 app.get('/', (_req, res) => res.json({
   service:   `${APP_NAME} OTP Gateway`,
   version:   '3.0.0',
   status:    'running',
-  storage:   'Upstash Redis',
+  storage:   'Upstash Redis (OTP); MongoDB (configured for cloud data)',
   endpoints: {
     sendOtp:   'POST /api/auth/send-otp',
     verifyOtp: 'POST /api/auth/verify-otp',
@@ -218,8 +252,32 @@ app.get('/', (_req, res) => res.json({
 
 app.get('/health', (_req, res) => res.json({ ok: true, ts: new Date().toISOString() }));
 
+app.get('/health/mongodb', async (_req, res) => {
+  if (!mongo.isConfigured()) {
+    return res.status(503).json({
+      ok: false,
+      configured: false,
+      error: 'MongoDB is not configured on the backend.',
+    });
+  }
+  try {
+    await mongo.checkConnection();
+    return res.json({ ok: true, configured: true });
+  } catch (error) {
+    log('error', `MongoDB health check failed: ${error.message}`);
+    return res.status(503).json({
+      ok: false,
+      configured: true,
+      error: 'MongoDB is unavailable.',
+    });
+  }
+});
+
 // ── POST /api/auth/send-otp ──────────────────────────────────────────────────
 app.post('/api/auth/send-otp', requireApiKey, async (req, res) => {
+  if (!redis) {
+    return res.status(503).json({ error: 'OTP storage is not configured on the backend.' });
+  }
   const email = normalise(req.body?.email);
 
   if (!EMAIL_RE.test(email)) {
@@ -264,6 +322,9 @@ app.post('/api/auth/send-otp', requireApiKey, async (req, res) => {
 
 // ── POST /api/auth/verify-otp ────────────────────────────────────────────────
 app.post('/api/auth/verify-otp', requireApiKey, async (req, res) => {
+  if (!redis) {
+    return res.status(503).json({ error: 'OTP storage is not configured on the backend.' });
+  }
   const email = normalise(req.body?.email);
   const otp   = String(req.body?.otp || '').trim();
 
@@ -321,7 +382,47 @@ app.post('/api/auth/verify-otp', requireApiKey, async (req, res) => {
   await redis.del(challengeKey(email));
   log('info', `OTP verified for ${maskEmail(email)}`);
 
-  return res.json({ verified: true, message: 'Email verified successfully.' });
+  return res.json({
+    verified: true,
+    accessToken: encodeToken(email),
+    message: 'Email verified successfully.',
+  });
+});
+
+app.post('/api/sync/push', verifiedEmail, async (req, res) => {
+  const data = req.body?.data;
+  if (!data || typeof data !== 'object' || Array.isArray(data)) {
+    return res.status(400).json({ error: 'A sync data object is required.' });
+  }
+  if (JSON.stringify(data).length > 5 * 1024 * 1024) {
+    return res.status(413).json({ error: 'Sync payload is too large.' });
+  }
+  try {
+    const db = await mongo.getDatabase();
+    await db.collection('user_snapshots').updateOne(
+      { email: req.syncEmail },
+      { $set: { email: req.syncEmail, data, updatedAt: new Date() } },
+      { upsert: true },
+    );
+    return res.json({ ok: true, updatedAt: new Date().toISOString() });
+  } catch (error) {
+    log('error', `Sync push failed: ${error.message}`);
+    return res.status(503).json({ error: 'Cloud backup is temporarily unavailable.' });
+  }
+});
+
+app.get('/api/sync/pull', verifiedEmail, async (req, res) => {
+  try {
+    const db = await mongo.getDatabase();
+    const snapshot = await db.collection('user_snapshots').findOne(
+      { email: req.syncEmail },
+      { projection: { _id: 0, data: 1, updatedAt: 1 } },
+    );
+    return res.json(snapshot ?? { data: null, updatedAt: null });
+  } catch (error) {
+    log('error', `Sync pull failed: ${error.message}`);
+    return res.status(503).json({ error: 'Cloud backup is temporarily unavailable.' });
+  }
 });
 
 // ─────────────────────────────────────────────────────────────── 404 + errors
@@ -340,9 +441,10 @@ app.listen(PORT, () => {
   log('info', `OTP validity: ${OTP_VALIDITY_SECONDS / 60} min | max attempts: ${OTP_MAX_ATTEMPTS}`);
   log('info', `API key: ${OTP_API_KEY ? 'ENABLED' : 'disabled'}`);
 
-  if (!process.env.UPSTASH_REDIS_REST_URL || !process.env.UPSTASH_REDIS_REST_TOKEN) {
-    log('error', 'UPSTASH_REDIS_REST_URL / UPSTASH_REDIS_REST_TOKEN not set — Redis will fail');
+  if (!redisConfigured) {
+    log('error', 'UPSTASH_REDIS_REST_URL / UPSTASH_REDIS_REST_TOKEN not configured — OTP endpoints disabled');
   }
+  log('info', `MongoDB: ${mongo.isConfigured() ? 'configured (lazy connection)' : 'not configured'}`);
   if (!process.env.MAIL_USER || !process.env.MAIL_PASS) {
     log('error', 'MAIL_USER / MAIL_PASS not set — email delivery will fail');
   } else {
