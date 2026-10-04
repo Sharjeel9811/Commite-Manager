@@ -250,7 +250,7 @@ Write-Host ('=' * 74) -ForegroundColor Green
 Write-Host ''
 Write-Host '  ---- OTP flow -------------------------------------------------------'
 Write-Host '  1. Register with a real email address.'
-Write-Host '  2. Tap "Send a new code" -- code arrives in your inbox (check spam).'
+Write-Host '  2. The 6-digit verification screen opens and the code is sent automatically.'
 Write-Host '  3. Enter the 6-digit code -> dashboard opens.'
 if ($UseGateway -and $GatewayUrl -notmatch '(192\.168\.|10\.\d+\.|localhost|127\.)') {
     Write-Host '  4. OTP sent via cloud gateway -- works on ANY network.' -ForegroundColor Green
@@ -260,9 +260,14 @@ if ($UseGateway -and $GatewayUrl -notmatch '(192\.168\.|10\.\d+\.|localhost|127\
     Write-Host '  4. OTP sent via Supabase Auth -- works on ANY network.' -ForegroundColor Green
 }
 Write-Host ''
+Write-Host '  ---- Members and security ------------------------------------------'
+Write-Host '  5. Open a committee -> Members -> edit a person -> choose Organizer -> Save.'
+Write-Host '  6. Settings -> Require PIN -> switch it on; the app locks immediately.'
+Write-Host '  7. Unlock with the PIN, then background and reopen the app to test the lock.'
+Write-Host ''
 Write-Host '  ---- Language -------------------------------------------------------'
-Write-Host '  5. Settings -> Language -> tap "Urdu" -> whole app switches to Urdu.'
-Write-Host '  6. Tap "English" to switch back.  Choice persists across restarts.'
+Write-Host '  8. Settings -> Language -> tap "Urdu" -> whole app switches to Urdu.'
+Write-Host '  9. Tap "English" to switch back.  Choice persists across restarts.'
 Write-Host ''
 Write-Host '  ---- For a Play Store release build ---------------------------------'
 Write-Host '  .\build_release.ps1' -ForegroundColor Cyan
