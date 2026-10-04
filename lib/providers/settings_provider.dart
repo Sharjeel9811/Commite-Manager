@@ -11,6 +11,7 @@ import '../services/demo_data_service.dart';
 import '../services/interfaces/notification_service.dart';
 import '../services/reminder_service.dart';
 import 'auth_provider.dart';
+import 'locale_provider.dart';
 import 'theme_provider.dart';
 
 /// Preferences + notification control.
@@ -26,6 +27,7 @@ class SettingsProvider extends ChangeNotifier {
     required DemoDataService demoDataService,
     required AuthService authService,
     ThemeProvider? themeProvider,
+    LocaleProvider? localeProvider,
     AuthProvider? authProvider,
   }) : _settings = settingsRepository,
        _reminders = reminderService,
@@ -33,6 +35,7 @@ class SettingsProvider extends ChangeNotifier {
        _demo = demoDataService,
        _auth = authService,
        _theme = themeProvider,
+       _locale = localeProvider,
        _authProvider = authProvider;
 
   final SettingsRepository _settings;
@@ -45,6 +48,7 @@ class SettingsProvider extends ChangeNotifier {
   /// watches). Holding a reference is what makes the switch in Settings take
   /// effect immediately instead of only after the next launch.
   final ThemeProvider? _theme;
+  final LocaleProvider? _locale;
 
   /// `AuthProvider` holds its own copy of the preferences, loaded once at
   /// bootstrap. Security settings are forwarded so that turning the PIN on, or
@@ -105,7 +109,9 @@ class SettingsProvider extends ChangeNotifier {
     await _settings.save(_preferences);
     if (value) {
       await _notifications.requestPermission();
-      await _reminders.rescheduleAll();
+      await _reminders.rescheduleAll(
+        reminderHour: _preferences.dailyReminderHour,
+      );
     } else {
       await _notifications.cancelAll();
       _scheduledCount = 0;
@@ -117,7 +123,7 @@ class SettingsProvider extends ChangeNotifier {
     _preferences = _preferences.copyWith(dailyReminderHour: hour);
     notifyListeners();
     await _settings.save(_preferences);
-    await _reminders.rescheduleAll();
+    await _reminders.rescheduleAll(reminderHour: hour);
   }
 
   Future<void> refreshScheduledCount() async {
@@ -238,7 +244,14 @@ class SettingsProvider extends ChangeNotifier {
     await _settings.reset();
     _preferences = const AppSettings();
     _applyCurrency();
+    _theme?.applySettings(_preferences);
+    _locale?.applySettings(_preferences);
+    _authProvider?.applySecurityPreferences(_preferences);
     notifyListeners();
+    await _notifications.requestPermission();
+    await _reminders.rescheduleAll(
+      reminderHour: _preferences.dailyReminderHour,
+    );
   }
 
   // ------------------------------------------------------------------ Helpers

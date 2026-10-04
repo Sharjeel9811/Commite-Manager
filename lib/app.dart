@@ -51,17 +51,20 @@ class CommitteeManagerApp extends StatelessWidget {
           create: (_) => ThemeProvider(settingsRepository: locator.get()),
         ),
         ChangeNotifierProvider<LocaleProvider>(
-          create: (_) => LocaleProvider(settingsRepository: locator.get())..load(),
+          create: (_) =>
+              LocaleProvider(settingsRepository: locator.get())..load(),
         ),
         ChangeNotifierProvider<AuthProvider>(
-          create: (_) =>
-              AuthProvider(authService: locator.get(), settingsRepository: locator.get())
-                ..bootstrap(),
+          create: (_) => AuthProvider(
+            authService: locator.get(),
+            settingsRepository: locator.get(),
+          )..bootstrap(),
         ),
         ChangeNotifierProvider<CommitteeProvider>(
-          create: (_) =>
-              CommitteeProvider(committeeService: locator.get(), reminderService: locator.get())
-                ..load(),
+          create: (_) => CommitteeProvider(
+            committeeService: locator.get(),
+            reminderService: locator.get(),
+          )..load(),
         ),
         ChangeNotifierProvider<CommitteeDetailProvider>(
           create: (_) => CommitteeDetailProvider(
@@ -72,12 +75,17 @@ class CommitteeManagerApp extends StatelessWidget {
           ),
         ),
         ChangeNotifierProvider<PaymentProvider>(
-          create: (_) =>
-              PaymentProvider(paymentService: locator.get(), reminderService: locator.get()),
+          create: (_) => PaymentProvider(
+            paymentService: locator.get(),
+            reminderService: locator.get(),
+          ),
         ),
         ChangeNotifierProvider<DashboardProvider>(
           create: (_) =>
-              DashboardProvider(statisticsService: locator.get(), committeeService: locator.get())
+              DashboardProvider(
+                  statisticsService: locator.get(),
+                  committeeService: locator.get(),
+                )
                 ..load()
                 ..listenToPaymentChanges(),
         ),
@@ -89,44 +97,51 @@ class CommitteeManagerApp extends StatelessWidget {
             demoDataService: locator.get(),
             authService: locator.get(),
             themeProvider: context.read<ThemeProvider>(),
+            localeProvider: context.read<LocaleProvider>(),
             authProvider: context.read<AuthProvider>(),
           )..load(),
         ),
         ChangeNotifierProvider<HistoryProvider>(
-          create: (_) => HistoryProvider(statisticsService: locator.get())..load(),
+          create: (_) =>
+              HistoryProvider(statisticsService: locator.get())..load(),
         ),
         ChangeNotifierProvider<StatisticsProvider>(
-          create: (_) => StatisticsProvider(statisticsService: locator.get())..load(),
+          create: (_) =>
+              StatisticsProvider(statisticsService: locator.get())..load(),
         ),
       ],
       child: Consumer2<ThemeProvider, LocaleProvider>(
-        builder: (BuildContext context, ThemeProvider theme, LocaleProvider locale, _) {
-          return AppSessionGuard(
-            builder: (GlobalKey<NavigatorState> navigatorKey) => MaterialApp(
-              title: AppConstants.appName,
-              debugShowCheckedModeBanner: false,
-              theme: AppTheme.light,
-              darkTheme: AppTheme.dark,
-              themeMode: theme.themeMode,
-              // Locale drives both the language and RTL/LTR text direction.
-              locale: locale.locale,
-              supportedLocales: const <Locale>[
-                Locale('en'),
-                Locale('ur'),
-              ],
-              // Flutter's built-in widgets (date pickers, text fields, tooltips)
-              // also need to know the locale so they can flip their own layouts.
-              localizationsDelegates: const <LocalizationsDelegate<dynamic>>[
-                _FallbackMaterialLocalizationsDelegate(),
-                _FallbackWidgetsLocalizationsDelegate(),
-                _FallbackCupertinoLocalizationsDelegate(),
-              ],
-              initialRoute: AppRoutes.splash,
-              navigatorKey: navigatorKey,
-              onGenerateRoute: AppRouter.onGenerateRoute,
-            ),
-          );
-        },
+        builder:
+            (
+              BuildContext context,
+              ThemeProvider theme,
+              LocaleProvider locale,
+              _,
+            ) {
+              return AppSessionGuard(
+                builder: (GlobalKey<NavigatorState> navigatorKey) => MaterialApp(
+                  title: AppConstants.appName,
+                  debugShowCheckedModeBanner: false,
+                  theme: AppTheme.light,
+                  darkTheme: AppTheme.dark,
+                  themeMode: theme.themeMode,
+                  // Locale drives both the language and RTL/LTR text direction.
+                  locale: locale.locale,
+                  supportedLocales: const <Locale>[Locale('en'), Locale('ur')],
+                  // Flutter's built-in widgets (date pickers, text fields, tooltips)
+                  // also need to know the locale so they can flip their own layouts.
+                  localizationsDelegates:
+                      const <LocalizationsDelegate<dynamic>>[
+                        _FallbackMaterialLocalizationsDelegate(),
+                        _FallbackWidgetsLocalizationsDelegate(),
+                        _FallbackCupertinoLocalizationsDelegate(),
+                      ],
+                  initialRoute: AppRoutes.splash,
+                  navigatorKey: navigatorKey,
+                  onGenerateRoute: AppRouter.onGenerateRoute,
+                ),
+              );
+            },
       ),
     );
   }
@@ -150,7 +165,10 @@ class AppRouter {
       AppRoutes.lock => _page(settings, const LockScreen()),
       AppRoutes.dashboard => _page(settings, const AppShell()),
       AppRoutes.committees => _page(settings, const CommitteesScreen()),
-      AppRoutes.createCommittee => _page(settings, const CreateCommitteeScreen()),
+      AppRoutes.createCommittee => _page(
+        settings,
+        const CreateCommitteeScreen(),
+      ),
       AppRoutes.committeeDetails => _page(
         settings,
         CommitteeDetailsScreen(committeeId: settings.arguments! as String),
@@ -166,12 +184,17 @@ class AppRouter {
       AppRoutes.history => _page(settings, const HistoryScreen()),
       AppRoutes.statistics => _page(settings, const StatisticsScreen()),
       AppRoutes.settings => _page(settings, const SettingsScreen()),
-      _ => _page(settings, const Scaffold(body: ErrorState(message: 'That page does not exist.'))),
+      _ => _page(
+        settings,
+        const Scaffold(body: ErrorState(message: 'That page does not exist.')),
+      ),
     };
   }
 
-  static MaterialPageRoute<dynamic> _page(RouteSettings settings, Widget child) =>
-      MaterialPageRoute<dynamic>(settings: settings, builder: (_) => child);
+  static MaterialPageRoute<dynamic> _page(
+    RouteSettings settings,
+    Widget child,
+  ) => MaterialPageRoute<dynamic>(settings: settings, builder: (_) => child);
 }
 
 // ---------------------------------------------------------------------------

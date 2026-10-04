@@ -39,14 +39,14 @@ class ReminderService {
 
   /// Rebuilds every reminder for the whole app. Called at start-up and after
   /// any payment is recorded, so the schedule always matches the data.
-  Future<void> rescheduleAll() async {
+  Future<void> rescheduleAll({int reminderHour = 9}) async {
     try {
       await _notifications.initialize();
       await _notifications.cancelAll();
       final List<Committee> committees = await _committees.getAll();
       for (final Committee committee in committees) {
         if (committee.status == CommitteeStatus.archived) continue;
-        await scheduleForCommittee(committee);
+        await scheduleForCommittee(committee, reminderHour: reminderHour);
       }
       _log.info('Reminders rebuilt');
     } catch (error) {
@@ -60,7 +60,10 @@ class ReminderService {
   ///  * on the due date itself,
   ///  * the day after, if money is still missing (overdue),
   ///  * a few days before the next recipient's turn.
-  Future<void> scheduleForCommittee(Committee committee, {int reminderHour = 9}) async {
+  Future<void> scheduleForCommittee(
+    Committee committee, {
+    int reminderHour = 9,
+  }) async {
     if (committee.status == CommitteeStatus.completed) return;
 
     final List<Payment> payments = await _payments.getByCommittee(committee.id);
@@ -81,7 +84,10 @@ class ReminderService {
       final String periodLabel = period.label;
 
       // 1 day before
-      final DateTime dayBefore = _atHour(AppDateUtils.addDays(period.dueDate, -1), reminderHour);
+      final DateTime dayBefore = _atHour(
+        AppDateUtils.addDays(period.dueDate, -1),
+        reminderHour,
+      );
       await _notifications.schedule(
         AppNotification(
           id: _paymentId('pre', committee.id, period.periodNumber),
@@ -111,7 +117,10 @@ class ReminderService {
       );
 
       // Overdue follow-up
-      final DateTime overdueDay = _atHour(AppDateUtils.addDays(period.dueDate, 1), reminderHour);
+      final DateTime overdueDay = _atHour(
+        AppDateUtils.addDays(period.dueDate, 1),
+        reminderHour,
+      );
       await _notifications.schedule(
         AppNotification(
           id: _paymentId('over', committee.id, period.periodNumber),
@@ -130,16 +139,24 @@ class ReminderService {
     // Upcoming turn
     for (final CommitteeTurn turn in turns) {
       if (turn.isCompleted) continue;
-      if (turn.status == TurnStatus.upcoming && turn.turnNumber > committee.currentTurn + 1) {
+      if (turn.status == TurnStatus.upcoming &&
+          turn.turnNumber > committee.currentTurn + 1) {
         continue; // only remind about the immediate next turn
       }
-      final DateTime remindOn = _atHour(AppDateUtils.addDays(turn.dueDate, -3), reminderHour);
+      final DateTime remindOn = _atHour(
+        AppDateUtils.addDays(turn.dueDate, -3),
+        reminderHour,
+      );
       final bool isMyTurn = turn.turnNumber == committee.currentTurn;
       await _notifications.schedule(
         AppNotification(
           id: _turnId(committee.id, turn.turnNumber),
-          type: isMyTurn ? AppNotificationType.myTurn : AppNotificationType.turnUpcoming,
-          title: isMyTurn ? 'Your committee turn is coming up' : 'Next committee turn',
+          type: isMyTurn
+              ? AppNotificationType.myTurn
+              : AppNotificationType.turnUpcoming,
+          title: isMyTurn
+              ? 'Your committee turn is coming up'
+              : 'Next committee turn',
           body:
               '${committee.name}: turn ${turn.turnNumber} is due on '
               '${AppDateUtils.formatCompact(turn.dueDate)} — pool ${_currency(turn.expectedAmount)}.',
@@ -160,7 +177,8 @@ class ReminderService {
     return _calculator.buildSchedule(committee);
   }
 
-  DateTime _atHour(DateTime day, int hour) => DateTime(day.year, day.month, day.day, hour, 0);
+  DateTime _atHour(DateTime day, int hour) =>
+      DateTime(day.year, day.month, day.day, hour, 0);
 
   String _currency(double amount) => CurrencyFormatter.format(amount);
 
