@@ -229,12 +229,17 @@ class AuthService {
     final AppUser? user = await _users.getPrimary();
     if (user == null) throw const AuthException('No account found.');
 
-    if (!await CryptoHelper.verifyPinAsync(
-      currentPin,
-      user.pinSalt,
-      user.pinHash,
-    )) {
-      throw const AuthException('Your current PIN is not correct.');
+    // currentPin is empty only when called from OTP recovery flow.
+    // In that case the user already proved identity via OTP — skip PIN check.
+    final bool isRecoveryReset = currentPin.isEmpty;
+    if (!isRecoveryReset) {
+      if (!await CryptoHelper.verifyPinAsync(
+        currentPin,
+        user.pinSalt,
+        user.pinHash,
+      )) {
+        throw const AuthException('Your current PIN is not correct.');
+      }
     }
 
     final String? newError = Validators.pin(newPin, isConfirmation: false);
@@ -247,7 +252,7 @@ class AuthService {
     if (newPin != confirmPin) {
       throw const ValidationException('The two PINs do not match.');
     }
-    if (newPin == currentPin) {
+    if (!isRecoveryReset && newPin == currentPin) {
       throw const ValidationException(
         'The new PIN must be different from the old one.',
       );
@@ -265,6 +270,41 @@ class AuthService {
     );
     await _otps.invalidateAll(user.id);
     _log.info('PIN changed');
+  }
+
+  /// Sets a replacement PIN after the recovery OTP has already verified the
+  /// account owner. This deliberately does not ask for the old PIN because the
+  /// recovery flow exists for the case where that PIN is forgotten.
+  Future<void> resetPinAfterRecovery({
+    required String newPin,
+    required String confirmPin,
+  }) async {
+    final AppUser? user = await _users.getPrimary();
+    if (user == null) throw const AuthException('No account found.');
+
+    final String? newError = Validators.pin(newPin, isConfirmation: false);
+    final String? confirmError = Validators.pin(
+      confirmPin,
+      isConfirmation: true,
+    );
+    if (newError != null) throw ValidationException(newError);
+    if (confirmError != null) throw ValidationException(confirmError);
+    if (newPin != confirmPin) {
+      throw const ValidationException('The two PINs do not match.');
+    }
+
+    final String salt = CryptoHelper.newSalt();
+    await _users.update(
+      user.copyWith(
+        pinSalt: salt,
+        pinHash: await CryptoHelper.hashPinAsync(newPin, salt),
+        pinLength: newPin.trim().length,
+        failedLoginAttempts: 0,
+        clearLock: true,
+      ),
+    );
+    await _otps.invalidateAll(user.id);
+    _log.info('PIN reset after OTP recovery');
   }
 
   Future<void> updateProfile({

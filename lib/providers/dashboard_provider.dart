@@ -39,6 +39,15 @@ class DashboardProvider extends ChangeNotifier {
   UpcomingDeadline? _deadline;
   UpcomingDeadline? get deadline => _deadline;
 
+  /// Timestamp of the last successful load — used to debounce rapid refreshes.
+  DateTime? _lastLoadedAt;
+
+  /// Minimum gap between full reloads. Payment updates within this window
+  /// are coalesced so a burst of 10 payments only triggers one DB round-trip.
+  static const Duration _debounce = Duration(milliseconds: 400);
+
+  bool _pendingReload = false;
+
   /// Computed from the clock instead of stored, so it can never drift.
   bool get isMorning {
     final int hour = DateTime.now().hour;
@@ -48,14 +57,37 @@ class DashboardProvider extends ChangeNotifier {
   void Function(String)? _busListener;
 
   Future<void> load() async {
+    // Debounce: if a load just finished very recently, schedule one more but
+    // don't pile them up.
+    final DateTime? last = _lastLoadedAt;
+    if (last != null &&
+        DateTime.now().difference(last) < _debounce) {
+      if (!_pendingReload) {
+        _pendingReload = true;
+        Future<void>.delayed(_debounce, () {
+          _pendingReload = false;
+          if (!_disposed) load();
+        });
+      }
+      return;
+    }
+
     _state = _state.isReady
         ? AsyncValue<DashboardStats>.loading(previous: _state.data)
         : const AsyncValue<DashboardStats>.loading();
     notifyListeners();
     try {
-      _state = AsyncValue<DashboardStats>.ready(await _statistics.dashboard());
-      _activeCommittees = (await _committees.activeCommittees()).take(3).toList(growable: false);
-      _deadline = await _committees.nextDeadline();
+      // Run statistics and committee queries concurrently instead of serially.
+      final List<Object?> results = await Future.wait(<Future<Object?>>[
+        _statistics.dashboard(),
+        _committees.activeCommittees(),
+        _committees.nextDeadline(),
+      ]);
+
+      _state = AsyncValue<DashboardStats>.ready(results[0]! as DashboardStats);
+      _activeCommittees = (results[1]! as List<Committee>).take(3).toList(growable: false);
+      _deadline = results[2] as UpcomingDeadline?;
+      _lastLoadedAt = DateTime.now();
     } catch (error) {
       _log.error('Could not load the dashboard', error);
       _state = AsyncValue<DashboardStats>.failed(describeError(error));
@@ -70,8 +102,11 @@ class DashboardProvider extends ChangeNotifier {
     PaymentChangeBus.instance.subscribe(_busListener!);
   }
 
+  bool _disposed = false;
+
   @override
   void dispose() {
+    _disposed = true;
     final void Function(String)? listener = _busListener;
     if (listener != null) {
       PaymentChangeBus.instance.unsubscribe(listener);

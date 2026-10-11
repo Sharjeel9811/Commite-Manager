@@ -10,11 +10,17 @@ import '../../core/theme/app_colors.dart';
 import '../../core/utils/app_date_utils.dart';
 import '../../core/utils/currency_formatter.dart';
 import '../../core/utils/validators.dart';
+import '../../di/service_locator.dart';
+import '../../models/committee.dart';
 import '../../models/enums.dart';
+import '../../models/member.dart';
 import '../../providers/committee_provider.dart';
 import '../../providers/dashboard_provider.dart';
-import '../../services/committee_service.dart' show MemberDraft;
+import '../../services/committee_service.dart' show CommitteeBundle, MemberDraft;
+import '../../services/join_code_service.dart';
 import '../../widgets/app_card.dart';
+import 'join_committee_screen.dart';
+import 'terms_dialog.dart';
 
 /// One member row being typed on the create screen.
 class _MemberRow {
@@ -105,6 +111,11 @@ class _CreateCommitteeScreenState extends State<CreateCommitteeScreen> {
       _scrollToTop();
       return;
     }
+
+    // Show Terms & Conditions — user must accept before creating.
+    final bool accepted = await showTermsDialog(context);
+    if (!accepted || !mounted) return;
+
     setState(() => _submitting = true);
     if (!mounted) return;
 
@@ -113,7 +124,7 @@ class _CreateCommitteeScreenState extends State<CreateCommitteeScreen> {
     final DashboardProvider dashboard = context.read<DashboardProvider>();
 
     try {
-      await context.read<CommitteeProvider>().create(
+      final Committee created = await context.read<CommitteeProvider>().create(
         name: _name.text.trim(),
         description: _description.text.trim(),
         contributionAmount: _contribution,
@@ -125,15 +136,51 @@ class _CreateCommitteeScreenState extends State<CreateCommitteeScreen> {
               (_MemberRow m) => MemberDraft(
                 name: m.name.trim(),
                 phoneNumber: m.phone.trim(),
-                // The first member organises the committee.
                 role: m == _members.first ? MemberRole.organizer : MemberRole.member,
               ),
             )
             .toList(growable: false),
       );
-          unawaited(dashboard.load());
+      unawaited(dashboard.load());
       if (!mounted) return;
-      navigator.pop(true);
+
+      // Generate a join code in the background and show the share screen.
+      // This is fire-and-forget — if the gateway is unavailable the committee
+      // was still created successfully; the user just won't get a code.
+      final List<Member> createdMembers = <Member>[];
+      try {
+        final CommitteeBundle bundle =
+            await context.read<CommitteeProvider>().bundleOf(created.id);
+        createdMembers.addAll(bundle.members);
+      } catch (_) {}
+
+      if (!mounted) return;
+
+      // Try to generate a join code.
+      final JoinCodeService joinSvc =
+          ServiceLocator.instance.get<JoinCodeService>();
+      final JoinCodeResult codeResult = await joinSvc.shareCommittee(
+        committee: created,
+        members: createdMembers,
+      );
+
+      if (!mounted) return;
+      if (codeResult.isSuccess) {
+        // Navigate to share-code screen instead of just popping.
+        navigator.pushReplacement(
+          MaterialPageRoute<void>(
+            builder: (_) => ShareCodeScreen(
+              committee: created,
+              members: createdMembers,
+              code: codeResult.code!,
+              expiresAt: codeResult.expiresAt!,
+            ),
+          ),
+        );
+      } else {
+        // Gateway unavailable — just go back to the committee list.
+        navigator.pop(true);
+      }
     } catch (error) {
       if (!mounted) return;
       setState(() => _submitting = false);

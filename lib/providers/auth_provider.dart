@@ -10,7 +10,7 @@ import '../repositories/interfaces/settings_repository.dart';
 import '../services/auth_service.dart';
 
 /// Where the user is in the authentication journey.
-enum AuthStage { loading, needsRegistration, needsOtp, locked, authenticated }
+enum AuthStage { loading, needsRegistration, needsOtp, needsPinReset, locked, authenticated }
 
 /// The authentication state machine.
 ///
@@ -135,14 +135,31 @@ class AuthProvider extends ChangeNotifier {
 
   // -------------------------------------------------------------------- OTP
 
-  /// Asks the gateway to send (or re-send) the verification code to the
-  /// email address the user registered with.
+  /// Sends a verification code during **initial registration** flow.
+  /// Sets stage to [AuthStage.needsOtp] so AuthGate shows the verify screen.
   Future<bool> sendOtp() async {
     _setBusy(true);
     _error = null;
     try {
       await _auth.sendVerificationCode();
       _stage = AuthStage.needsOtp;
+      return true;
+    } catch (error) {
+      _fail(error);
+      return false;
+    } finally {
+      _setBusy(false);
+    }
+  }
+
+  /// Sends a verification code during **PIN recovery** flow.
+  /// Does NOT change stage — the recovery dialog stays open,
+  /// no second VerifyOtpScreen is shown on top.
+  Future<bool> sendOtpForRecovery() async {
+    _setBusy(true);
+    _error = null;
+    try {
+      await _auth.sendVerificationCode();
       return true;
     } catch (error) {
       _fail(error);
@@ -206,7 +223,11 @@ class AuthProvider extends ChangeNotifier {
       _user = await _auth.unlockWithBiometrics();
       _failedAttempts = 0;
       _lockedUntil = null;
-      _stage = AuthStage.authenticated;
+      // Only move to authenticated if currently locked.
+      // When called from Settings (already authenticated) keep current stage.
+      if (_stage == AuthStage.locked) {
+        _stage = AuthStage.authenticated;
+      }
       return true;
     } on AuthException catch (error) {
       _error = error.message;
@@ -219,7 +240,9 @@ class AuthProvider extends ChangeNotifier {
     }
   }
 
-  /// Lockout recovery: proves the phone/email code, then signs in.
+  /// Lockout recovery: proves the phone/email code, then moves to PIN reset.
+  /// Stage becomes [AuthStage.needsPinReset] so AuthGate shows a full-screen
+  /// "Set new PIN" page — not another OTP screen.
   Future<bool> recoverWithOtp(String code) async {
     _setBusy(true);
     _error = null;
@@ -227,7 +250,8 @@ class AuthProvider extends ChangeNotifier {
       _user = await _auth.recoverWithOtp(code);
       _failedAttempts = 0;
       _lockedUntil = null;
-      _stage = AuthStage.authenticated;
+      // Move to the dedicated PIN-reset stage.
+      _stage = AuthStage.needsPinReset;
       return true;
     } on AuthException catch (error) {
       _error = error.message;
@@ -240,10 +264,37 @@ class AuthProvider extends ChangeNotifier {
     }
   }
 
-  Future<void> lock() async {
+  /// Completes the PIN-reset flow: saves the new PIN then unlocks the app.
+  Future<bool> completePinReset(String newPin, String confirmPin) async {
+    _setBusy(true);
+    _error = null;
+    try {
+      await _auth.changePin(
+        currentPin: '',   // allowed because OTP recovery already verified identity
+        newPin: newPin,
+        confirmPin: confirmPin,
+      );
+      _user = await _auth.currentUser();
+      _stage = AuthStage.authenticated;
+      return true;
+    } on AppException catch (error) {
+      _error = error.message;
+      return false;
+    } catch (error) {
+      _fail(error);
+      return false;
+    } finally {
+      _setBusy(false);
+    }
+  }
+
+  Future<void> lock({bool force = false}) async {
     if (_stage != AuthStage.authenticated) return;
-    final bool shouldLock = _preferences.lockEnabled;
-    if (!shouldLock) return;
+    // When called from "Lock now" button (force=true), lock regardless of
+    // the lockEnabled preference. The preference only controls *automatic*
+    // locking on idle/background — the user tapping the button is always
+    // an explicit intent to lock.
+    if (!force && !_preferences.lockEnabled) return;
     _stage = AuthStage.locked;
     _error = null;
     _safeNotify();
@@ -329,22 +380,23 @@ class AuthProvider extends ChangeNotifier {
     }
   }
 
-  /// A new PIN, salt and a fresh id — used when the user forgets everything.
+  /// Saves the replacement PIN after OTP recovery and completes authentication.
   Future<bool> resetToNewPin(String newPin, String confirmPin) async {
     _setBusy(true);
     _error = null;
     try {
-      final AppUser? user = await _auth.currentUser();
-      if (user == null) {
-        _error = 'No account found on this device.';
-        return false;
-      }
-      await _auth.changePin(
-        currentPin: '',
+      await _auth.resetPinAfterRecovery(
         newPin: newPin,
         confirmPin: confirmPin,
       );
+      _user = await _auth.currentUser();
+      _failedAttempts = 0;
+      _lockedUntil = null;
+      _stage = AuthStage.authenticated;
       return true;
+    } on AppException catch (error) {
+      _error = error.message;
+      return false;
     } catch (error) {
       _fail(error);
       return false;

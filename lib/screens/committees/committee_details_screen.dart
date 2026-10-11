@@ -6,11 +6,14 @@ import '../../core/errors/app_exception.dart';
 import '../../core/theme/app_colors.dart';
 import '../../core/utils/app_date_utils.dart';
 import '../../core/utils/currency_formatter.dart';
+import '../../di/service_locator.dart';
 import '../../models/committee.dart';
 import '../../models/member.dart';
 import '../../models/statistics.dart';
 import '../../providers/committee_detail_provider.dart';
 import '../../providers/committee_provider.dart';
+import '../../services/committee_service.dart' show CommitteeBundle;
+import '../../services/report_service.dart';
 import '../../widgets/app_card.dart';
 import '../../widgets/edit_sheets.dart';
 import '../../widgets/entity_tiles.dart';
@@ -79,6 +82,15 @@ class _CommitteeDetailsScreenState extends State<CommitteeDetailsScreen>
           PopupMenuButton<String>(
             onSelected: (String value) => _onMenu(value, committee),
             itemBuilder: (BuildContext _) => <PopupMenuEntry<String>>[
+              const PopupMenuItem<String>(
+                value: 'report',
+                child: ListTile(
+                  contentPadding: EdgeInsets.zero,
+                  leading: Icon(Icons.picture_as_pdf_rounded,
+                      color: AppColors.brandIndigo),
+                  title: Text('Generate Report'),
+                ),
+              ),
               PopupMenuItem<String>(
                 value: 'reorder',
                 enabled: detail.canEditRoster && committee.memberCount > 2,
@@ -100,8 +112,10 @@ class _CommitteeDetailsScreenState extends State<CommitteeDetailsScreen>
                 value: 'delete',
                 child: ListTile(
                   contentPadding: EdgeInsets.zero,
-                  leading: Icon(Icons.delete_outline_rounded, color: AppColors.danger),
-                  title: Text('Delete committee', style: TextStyle(color: AppColors.danger)),
+                  leading: Icon(Icons.delete_outline_rounded,
+                      color: AppColors.danger),
+                  title: Text('Delete committee',
+                      style: TextStyle(color: AppColors.danger)),
                 ),
               ),
             ],
@@ -135,6 +149,27 @@ class _CommitteeDetailsScreenState extends State<CommitteeDetailsScreen>
     final ScaffoldMessengerState messenger = ScaffoldMessenger.of(context);
     final NavigatorState navigator = Navigator.of(context);
 
+    if (value == 'report') {
+      // Show a loading indicator while generating.
+      final ScaffoldMessengerState msg = ScaffoldMessenger.of(context);
+      msg.showSnackBar(
+        const SnackBar(content: Text('Generating report…')),
+      );
+      try {
+        final CommitteeBundle bundle =
+            await detail.bundleFor(committee.id);
+        if (!mounted) return;
+        await ServiceLocator.instance
+            .get<ReportService>()
+            .generateAndShare(bundle: bundle);
+      } catch (e) {
+        if (!mounted) return;
+        msg.showSnackBar(
+          SnackBar(content: Text('Could not generate report: $e')),
+        );
+      }
+      return;
+    }
     if (value == 'reorder') {
       await navigator.pushNamed(AppRoutes.members, arguments: committee.id);
       return;

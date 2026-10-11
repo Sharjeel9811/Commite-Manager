@@ -210,7 +210,28 @@ class SettingsScreen extends StatelessWidget {
                   const Divider(height: 1),
                   SwitchListTile(
                     value: auth.biometricEnabled,
-                    onChanged: auth.setBiometricEnabled,
+                    onChanged: (bool value) async {
+                      final bool ok = await auth.setBiometricEnabled(value);
+                      if (!context.mounted) return;
+                      if (ok && value) {
+                        // Immediately test the fingerprint so the user
+                        // confirms it works before leaving the settings screen.
+                        final bool tested =
+                            await auth.unlockWithBiometrics();
+                        if (!context.mounted) return;
+                        if (tested) {
+                          // Already authenticated — re-authenticate to stay
+                          // in the authenticated state (unlockWithBiometrics
+                          // does not change stage when already authenticated).
+                          ScaffoldMessenger.of(context).showSnackBar(
+                            const SnackBar(
+                              content: Text(
+                                'Fingerprint saved. You can now unlock with your fingerprint.'),
+                            ),
+                          );
+                        }
+                      }
+                    },
                     title: Text(s.unlockWithBiometrics),
                     subtitle: Text(s.unlockWithBiometricsSubtitle),
                     secondary: const Icon(Icons.fingerprint_rounded),
@@ -227,7 +248,7 @@ class SettingsScreen extends StatelessWidget {
                 ListTile(
                   leading: const Icon(Icons.lock_clock_rounded),
                   title: Text(s.lockNow),
-                  onTap: auth.lock,
+                  onTap: () => auth.lock(force: true),
                 ),
               ],
             ),

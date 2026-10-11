@@ -61,43 +61,72 @@ class _OtpInputState extends State<OtpInput> {
     super.dispose();
   }
 
-  String get _value => _controllers.map((TextEditingController c) => c.text).join();
+  String get _value =>
+      _controllers.map((TextEditingController c) => c.text).join();
 
   void _emit() => widget.onChanged(_value);
 
+  /// Called when the text in box [index] changes.
+  /// Handles both typing a digit (advance) and clearing (go back).
   void _onChanged(int index, String text) {
+    // Keep only the last character so pasting a full code still works.
     final String digit = text.isEmpty ? '' : text.characters.last;
-    _controllers[index].text = digit;
+
+    // Update the controller to exactly one character (or empty).
+    if (_controllers[index].text != digit) {
+      _controllers[index].text = digit;
+      // Move cursor to end so the field looks correct.
+      _controllers[index].selection = TextSelection.collapsed(
+        offset: digit.length,
+      );
+    }
     _emit();
 
-    if (digit.isNotEmpty && index < widget.length - 1) {
-      _focuses[index + 1].requestFocus();
-    } else if (digit.isEmpty && index > 0) {
-      _focuses[index - 1].requestFocus();
-    } else if (digit.isNotEmpty && index == widget.length - 1) {
-      // The last box is full: the caller can verify right away.
-      _focuses[index].unfocus();
-      widget.onCompleted?.call();
+    if (digit.isNotEmpty) {
+      if (index < widget.length - 1) {
+        // Advance to next box.
+        _focuses[index + 1].requestFocus();
+      } else {
+        // Last box filled — auto-submit.
+        _focuses[index].unfocus();
+        widget.onCompleted?.call();
+      }
     }
+    // If digit is empty we stay on the current box; _handleBackspace moves back.
   }
 
-  void _done(int index) {
-    if (_value.length != widget.length) return;
-    _focuses[index].unfocus();
-    widget.onCompleted?.call();
+  /// Handles the physical/virtual backspace key.
+  /// If the current box is already empty, move focus to the previous box and
+  /// clear it so the user can re-type.
+  KeyEventResult _handleBackspace(int index, KeyEvent event) {
+    if (event is! KeyDownEvent && event is! KeyRepeatEvent) {
+      return KeyEventResult.ignored;
+    }
+    if (event.logicalKey != LogicalKeyboardKey.backspace) {
+      return KeyEventResult.ignored;
+    }
+
+    if (_controllers[index].text.isEmpty && index > 0) {
+      // Current box is empty — go to previous and clear it.
+      _controllers[index - 1].clear();
+      _focuses[index - 1].requestFocus();
+      _emit();
+      return KeyEventResult.handled;
+    }
+    // Current box has a digit — let the TextField clear it normally.
+    return KeyEventResult.ignored;
   }
 
   @override
   Widget build(BuildContext context) {
-    // Use LayoutBuilder so each box is sized relative to available width,
-    // preventing overflow on narrow screens (e.g. 360 dp devices).
     return LayoutBuilder(
       builder: (BuildContext context, BoxConstraints constraints) {
-        // Total gap width between `length` boxes = (length - 1) * AppSpacing.sm
         final double totalGap = (widget.length - 1) * AppSpacing.sm;
         final double boxWidth =
-            ((constraints.maxWidth - totalGap) / widget.length).clamp(36.0, 56.0);
-        final double boxHeight = (boxWidth * 58 / 48).clamp(44.0, 68.0);
+            ((constraints.maxWidth - totalGap) / widget.length)
+                .clamp(36.0, 56.0);
+        final double boxHeight =
+            (boxWidth * 58 / 48).clamp(44.0, 68.0);
 
         return Row(
           mainAxisAlignment: MainAxisAlignment.center,
@@ -107,29 +136,41 @@ class _OtpInputState extends State<OtpInput> {
               SizedBox(
                 width: boxWidth,
                 height: boxHeight,
-                child: TextField(
-                  controller: _controllers[i],
-                  focusNode: _focuses[i],
-                  enabled: widget.enabled,
-                  textAlign: TextAlign.center,
-                  keyboardType: TextInputType.number,
-                  textInputAction: i == widget.length - 1
-                      ? TextInputAction.done
-                      : TextInputAction.next,
-                  maxLength: 1,
-                  obscureText: false,
-                  showCursor: true,
-                  // A digit field has nothing for the IME to suggest: a suggestion
-                  // strip floating over the row reads as a stray message that
-                  // appears exactly when the last box is typed.
-                  enableSuggestions: false,
-                  autocorrect: false,
-                  style: Theme.of(context).textTheme.titleLarge,
-                  inputFormatters: <TextInputFormatter>[FilteringTextInputFormatter.digitsOnly],
-                  decoration:
-                      const InputDecoration(counterText: '', contentPadding: EdgeInsets.zero),
-                  onChanged: (String value) => _onChanged(i, value),
-                  onSubmitted: (_) => _done(i),
+                child: KeyboardListener(
+                  // KeyboardListener wraps the TextField so we intercept
+                  // backspace before the IME swallows it.
+                  focusNode: FocusNode(skipTraversal: true),
+                  onKeyEvent: (KeyEvent e) => _handleBackspace(i, e),
+                  child: TextField(
+                    controller: _controllers[i],
+                    focusNode: _focuses[i],
+                    enabled: widget.enabled,
+                    textAlign: TextAlign.center,
+                    keyboardType: TextInputType.number,
+                    textInputAction: i == widget.length - 1
+                        ? TextInputAction.done
+                        : TextInputAction.next,
+                    maxLength: 2, // Allow 2 so IME can replace the old digit.
+                    obscureText: false,
+                    showCursor: true,
+                    enableSuggestions: false,
+                    autocorrect: false,
+                    style: Theme.of(context).textTheme.titleLarge,
+                    inputFormatters: <TextInputFormatter>[
+                      FilteringTextInputFormatter.digitsOnly,
+                    ],
+                    decoration: const InputDecoration(
+                      counterText: '',
+                      contentPadding: EdgeInsets.zero,
+                    ),
+                    onChanged: (String value) => _onChanged(i, value),
+                    onSubmitted: (_) {
+                      if (_value.length == widget.length) {
+                        _focuses[i].unfocus();
+                        widget.onCompleted?.call();
+                      }
+                    },
+                  ),
                 ),
               ),
             ],

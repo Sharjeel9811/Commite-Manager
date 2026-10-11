@@ -41,7 +41,9 @@ class _LockScreenState extends State<LockScreen> {
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (!mounted) return;
       final AuthProvider auth = context.read<AuthProvider>();
-      if (auth.biometricAvailable && auth.biometricEnabled && !auth.isLockedOut) {
+      if (auth.biometricAvailable &&
+          auth.biometricEnabled &&
+          !auth.isLockedOut) {
         _biometric(auth);
       }
     });
@@ -77,18 +79,36 @@ class _LockScreenState extends State<LockScreen> {
   }
 
   Future<void> _recover(AuthProvider auth) async {
+    // Step 1 — verify identity with OTP
     final String? code = await showDialog<String>(
       context: context,
       builder: (BuildContext _) => const _OtpRecoveryDialog(),
     );
     if (code == null || !mounted) return;
+
     final bool ok = await auth.recoverWithOtp(code);
     if (!mounted) return;
+
     if (!ok) {
       setState(() => _error = auth.error ?? 'That code is not correct.');
+      return;
+    }
+
+    // Step 2 — OTP passed, now require a replacement PIN before entering the app.
+    if (!mounted) return;
+    final bool? pinSet = await showDialog<bool>(
+      context: context,
+      barrierDismissible: false,
+      builder: (BuildContext _) => const _SetNewPinDialog(),
+    );
+
+    if (pinSet != true && mounted) {
+      setState(() => _error = 'Set a new PIN to finish account recovery.');
     }
   }
-  String get minMaxPin => '${AppConstants.minPinLength}-${AppConstants.maxPinLength}';
+
+  String get minMaxPin =>
+      '${AppConstants.minPinLength}-${AppConstants.maxPinLength}';
 
   Duration? get _remaining {
     final DateTime? until = context.read<AuthProvider>().lockedUntil;
@@ -104,12 +124,15 @@ class _LockScreenState extends State<LockScreen> {
     final AuthProvider auth = context.watch<AuthProvider>();
     final Duration? remaining = _remaining;
     final bool lockedOut = remaining != null;
-    final String? serverError = _error.isNotEmpty ? _error : (lockedOut ? null : auth.error);
+    final String? serverError = _error.isNotEmpty
+        ? _error
+        : (lockedOut ? null : auth.error);
 
-    final int expectedLength = (auth.user?.pinLength ?? AppConstants.minPinLength).clamp(
-      AppConstants.minPinLength,
-      AppConstants.maxPinLength,
-    );
+    final int expectedLength =
+        (auth.user?.pinLength ?? AppConstants.minPinLength).clamp(
+          AppConstants.minPinLength,
+          AppConstants.maxPinLength,
+        );
 
     return Scaffold(
       body: SafeArea(
@@ -133,9 +156,13 @@ class _LockScreenState extends State<LockScreen> {
                         borderRadius: BorderRadius.circular(AppRadius.xl),
                       ),
                       child: Icon(
-                        lockedOut ? Icons.lock_clock_rounded : Icons.lock_rounded,
+                        lockedOut
+                            ? Icons.lock_clock_rounded
+                            : Icons.lock_rounded,
                         size: 34,
-                        color: lockedOut ? AppColors.danger : theme.colorScheme.onPrimaryContainer,
+                        color: lockedOut
+                            ? AppColors.danger
+                            : theme.colorScheme.onPrimaryContainer,
                       ),
                     ),
                   ),
@@ -170,7 +197,10 @@ class _LockScreenState extends State<LockScreen> {
                       },
                       onBackspace: () {
                         if (_pin.text.isNotEmpty) {
-                          _pin.text = _pin.text.substring(0, _pin.text.length - 1);
+                          _pin.text = _pin.text.substring(
+                            0,
+                            _pin.text.length - 1,
+                          );
                         }
                       },
                     ),
@@ -194,16 +224,21 @@ class _LockScreenState extends State<LockScreen> {
                     ),
                     const SizedBox(height: AppSpacing.lg),
                     FilledButton(
-                      onPressed: auth.isBusy || _pin.text.isEmpty ? null : () => _unlock(auth),
+                      onPressed: auth.isBusy || _pin.text.isEmpty
+                          ? null
+                          : () => _unlock(auth),
                       child: auth.isBusy
                           ? const SizedBox(
                               width: 22,
                               height: 22,
-                              child: CircularProgressIndicator(strokeWidth: 2.5),
+                              child: CircularProgressIndicator(
+                                strokeWidth: 2.5,
+                              ),
                             )
                           : Text(s.unlock),
                     ),
-                    if (auth.biometricAvailable && auth.biometricEnabled) ...<Widget>[
+                    if (auth.biometricAvailable &&
+                        auth.biometricEnabled) ...<Widget>[
                       const SizedBox(height: AppSpacing.md),
                       OutlinedButton.icon(
                         onPressed: auth.isBusy ? null : () => _biometric(auth),
@@ -233,7 +268,9 @@ class _LockScreenState extends State<LockScreen> {
                     const SizedBox(height: AppSpacing.lg),
                     Text(
                       serverError,
-                      style: theme.textTheme.bodySmall?.copyWith(color: theme.colorScheme.error),
+                      style: theme.textTheme.bodySmall?.copyWith(
+                        color: theme.colorScheme.error,
+                      ),
                       textAlign: TextAlign.center,
                     ),
                   ],
@@ -271,7 +308,8 @@ class _PinPad extends StatelessWidget {
       crossAxisSpacing: AppSpacing.md,
       childAspectRatio: 1.7,
       children: <Widget>[
-        for (int i = 1; i <= 9; i++) _Key(label: '$i', onTap: () => onDigit('$i')),
+        for (int i = 1; i <= 9; i++)
+          _Key(label: '$i', onTap: () => onDigit('$i')),
         const SizedBox.shrink(),
         _Key(label: '0', onTap: () => onDigit('0')),
         _Key(icon: Icons.backspace_outlined, onTap: onBackspace),
@@ -343,7 +381,9 @@ class _OtpRecoveryDialogState extends State<_OtpRecoveryDialog> {
       _sending = true;
       _sendError = null;
     });
-    final bool ok = await auth.sendOtp();
+    // Use sendOtpForRecovery() — does NOT change stage, so no second
+    // VerifyOtpScreen appears on top of this dialog.
+    final bool ok = await auth.sendOtpForRecovery();
     if (!mounted) return;
     setState(() {
       _sending = false;
@@ -373,7 +413,11 @@ class _OtpRecoveryDialogState extends State<_OtpRecoveryDialog> {
           if (_sending) ...<Widget>[
             const Row(
               children: <Widget>[
-                SizedBox(width: 18, height: 18, child: CircularProgressIndicator(strokeWidth: 2)),
+                SizedBox(
+                  width: 18,
+                  height: 18,
+                  child: CircularProgressIndicator(strokeWidth: 2),
+                ),
                 SizedBox(width: AppSpacing.md),
                 Expanded(child: Text('Sending a one-time code...')),
               ],
@@ -390,7 +434,9 @@ class _OtpRecoveryDialogState extends State<_OtpRecoveryDialog> {
               autofocus: true,
               keyboardType: TextInputType.number,
               maxLength: AppConstants.otpLength,
-              inputFormatters: <TextInputFormatter>[FilteringTextInputFormatter.digitsOnly],
+              inputFormatters: <TextInputFormatter>[
+                FilteringTextInputFormatter.digitsOnly,
+              ],
               decoration: const InputDecoration(
                 counterText: '',
                 labelText: '6-digit code from the message',
@@ -404,9 +450,8 @@ class _OtpRecoveryDialogState extends State<_OtpRecoveryDialog> {
             const SizedBox(height: AppSpacing.sm),
             Text(
               _sendError ?? 'Please try again.',
-              style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                color: Theme.of(context).colorScheme.error,
-              ),
+              style: Theme.of(context).textTheme.bodySmall
+                  ?.copyWith(color: Theme.of(context).colorScheme.error),
             ),
             const SizedBox(height: AppSpacing.sm),
             Text(
@@ -417,15 +462,14 @@ class _OtpRecoveryDialogState extends State<_OtpRecoveryDialog> {
         ],
       ),
       actions: <Widget>[
-        TextButton(onPressed: () => Navigator.pop(context), child: const Text('Cancel')),
+        TextButton(
+          onPressed: () => Navigator.pop(context),
+          child: const Text('Cancel'),
+        ),
         if (_sent) ...<Widget>[
-          TextButton(
-            onPressed: _sending ? null : _send,
-            child: const Text('Resend'),
-          ),
           FilledButton(
             onPressed: () => Navigator.pop(context, _controller.text.trim()),
-            child: const Text('Unlock'),
+            child: const Text('Verify code'),
           ),
         ] else if (!_sending) ...<Widget>[
           FilledButton(onPressed: _send, child: const Text('Try again')),
@@ -440,4 +484,136 @@ String _maskTarget(String value) {
   if (value.length <= 4) return '••••';
   return '${value.substring(0, 2)}${'•' * (value.length - 4)}'
       '${value.substring(value.length - 2)}';
+}
+
+// ─────────────────────────────────────────────────────────── Set New PIN dialog
+
+/// Shown after a successful OTP recovery so the user must choose a new PIN.
+class _SetNewPinDialog extends StatefulWidget {
+  const _SetNewPinDialog();
+
+  @override
+  State<_SetNewPinDialog> createState() => _SetNewPinDialogState();
+}
+
+class _SetNewPinDialogState extends State<_SetNewPinDialog> {
+  final TextEditingController _newPin = TextEditingController();
+  final TextEditingController _confirmPin = TextEditingController();
+  String? _error;
+  bool _busy = false;
+
+  @override
+  void dispose() {
+    _newPin.dispose();
+    _confirmPin.dispose();
+    super.dispose();
+  }
+
+  Future<void> _save() async {
+    final String pin = _newPin.text.trim();
+    final String confirm = _confirmPin.text.trim();
+
+    if (pin.length < AppConstants.minPinLength ||
+        pin.length > AppConstants.maxPinLength) {
+      setState(
+        () => _error =
+            'PIN must be ${AppConstants.minPinLength}–'
+            '${AppConstants.maxPinLength} digits.',
+      );
+      return;
+    }
+    if (pin != confirm) {
+      setState(() => _error = 'PINs do not match.');
+      return;
+    }
+
+    setState(() {
+      _busy = true;
+      _error = null;
+    });
+    final AuthProvider auth = context.read<AuthProvider>();
+    // resetToNewPin uses an empty current PIN — allowed only after OTP recovery.
+    final bool ok = await auth.resetToNewPin(pin, confirm);
+    if (!mounted) return;
+    if (ok) {
+      Navigator.pop(context, true);
+    } else {
+      setState(() {
+        _busy = false;
+        _error = auth.error ?? 'Could not update PIN. Try again.';
+      });
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return PopScope(
+      canPop: false,
+      child: AlertDialog(
+        title: const Text('Set a new PIN'),
+        content: SingleChildScrollView(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: <Widget>[
+              const Text(
+                'Your identity has been verified. '
+                'Choose a new PIN to protect your app.',
+              ),
+              const SizedBox(height: AppSpacing.lg),
+              TextField(
+                controller: _newPin,
+                obscureText: true,
+                autofocus: true,
+                keyboardType: TextInputType.number,
+                maxLength: AppConstants.maxPinLength,
+                inputFormatters: <TextInputFormatter>[
+                  FilteringTextInputFormatter.digitsOnly,
+                ],
+                decoration: InputDecoration(
+                  labelText:
+                      '${AppConstants.minPinLength}–${AppConstants.maxPinLength} digit PIN',
+                  counterText: '',
+                ),
+              ),
+              const SizedBox(height: AppSpacing.md),
+              TextField(
+                controller: _confirmPin,
+                obscureText: true,
+                keyboardType: TextInputType.number,
+                maxLength: AppConstants.maxPinLength,
+                inputFormatters: <TextInputFormatter>[
+                  FilteringTextInputFormatter.digitsOnly,
+                ],
+                decoration: const InputDecoration(
+                  labelText: 'Confirm new PIN',
+                  counterText: '',
+                ),
+                onSubmitted: (_) => _busy ? null : _save(),
+              ),
+              if (_error != null) ...<Widget>[
+                const SizedBox(height: AppSpacing.md),
+                Text(
+                  _error!,
+                  style: Theme.of(context).textTheme.bodySmall
+                      ?.copyWith(color: Theme.of(context).colorScheme.error),
+                ),
+              ],
+            ],
+          ),
+        ),
+        actions: <Widget>[
+          FilledButton(
+            onPressed: _busy ? null : _save,
+            child: _busy
+                ? const SizedBox(
+                    width: 18,
+                    height: 18,
+                    child: CircularProgressIndicator(strokeWidth: 2),
+                  )
+                : const Text('Save PIN and continue'),
+          ),
+        ],
+      ),
+    );
+  }
 }

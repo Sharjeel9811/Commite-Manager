@@ -108,12 +108,26 @@ class CommitteeDetailProvider extends ChangeNotifier {
     _error = null;
     notifyListeners();
     try {
-final CommitteeBundle bundle = await _committees.loadBundle(committeeId);
+      // Load the bundle (committee + members + payments + turns + periods) in
+      // one call — CommitteeService already batches these into a single
+      // consistent snapshot so screens never disagree about the numbers.
+      final CommitteeBundle bundle = await _committees.loadBundle(committeeId);
       _committee = bundle.committee;
       _members = bundle.members;
       _hasPaidPayments = bundle.payments.any((Payment p) => p.isPaid);
-      _contributions = _buildContributions(bundle);
-      _periods = _buildPeriods(bundle);
+      // Build view models off the main thread if the data is large enough to
+      // cause a noticeable frame drop (> ~50 members or > ~500 payments).
+      if (bundle.members.length > 50 || bundle.payments.length > 500) {
+        final (_ContributionResult cr, List<PeriodView> pv) = await (
+          compute(_buildContributionsIsolate, bundle),
+          compute(_buildPeriodsIsolate, bundle),
+        ).wait;
+        _contributions = cr.contributions;
+        _periods = pv;
+      } else {
+        _contributions = _buildContributions(bundle);
+        _periods = _buildPeriods(bundle);
+      }
       _selectedPeriod = _pickDefaultPeriod(bundle);
     } catch (error) {
       _log.error('Could not open committee $committeeId', error);
@@ -218,6 +232,9 @@ final CommitteeBundle bundle = await _committees.loadBundle(committeeId);
     await _reminders.rescheduleAll();
     await refresh();
   }
+
+  Future<CommitteeBundle> bundleFor(String id) =>
+      _committees.loadBundle(id);
 
   Future<void> _afterRosterChange() async {
     await _reminders.rescheduleAll();
@@ -393,4 +410,98 @@ class PeriodView {
   bool get isComplete => totalCount > 0 && paidCount == totalCount;
 
   double get percent => totalCount == 0 ? 0 : (paidCount / totalCount) * 100;
+}
+
+// ── Isolate helpers ─────────────────────────────────────────────────────────
+// Top-level functions are required for `compute()` — closures don't work.
+
+class _ContributionResult {
+  const _ContributionResult(this.contributions);
+  final List<MemberContributionView> contributions;
+}
+
+_ContributionResult _buildContributionsIsolate(CommitteeBundle bundle) {
+  final Map<String, int> paidByMember = <String, int>{};
+  final Map<String, int> pendingByMember = <String, int>{};
+  final Map<String, double> amountByMember = <String, double>{};
+
+  for (final Payment payment in bundle.payments) {
+    if (payment.isPaid) {
+      paidByMember[payment.memberId] = (paidByMember[payment.memberId] ?? 0) + 1;
+      amountByMember[payment.memberId] =
+          (amountByMember[payment.memberId] ?? 0) + payment.amount;
+    } else {
+      pendingByMember[payment.memberId] =
+          (pendingByMember[payment.memberId] ?? 0) + 1;
+    }
+  }
+
+  final List<MemberContributionView> contributions = bundle.members
+      .map(
+        (Member m) => MemberContributionView(
+          member: m,
+          paidCount: paidByMember[m.id] ?? 0,
+          pendingCount: pendingByMember[m.id] ?? 0,
+          amountPaid: amountByMember[m.id] ?? 0,
+          hasReceivedTurn: bundle.turns.any(
+            (CommitteeTurn t) => t.memberId == m.id && t.isCompleted,
+          ),
+          receivedAt: _completionOfIsolate(bundle, m.id),
+        ),
+      )
+      .toList(growable: false);
+
+  return _ContributionResult(contributions);
+}
+
+DateTime? _completionOfIsolate(CommitteeBundle bundle, String memberId) {
+  for (final CommitteeTurn turn in bundle.turns) {
+    if (turn.memberId == memberId) return turn.completedAt;
+  }
+  return null;
+}
+
+List<PeriodView> _buildPeriodsIsolate(CommitteeBundle bundle) {
+  final List<PeriodView> views = <PeriodView>[];
+  final Committee committee = bundle.committee;
+
+  for (final PaymentSchedule schedule in bundle.periods) {
+    final List<Payment> rows = bundle.payments
+        .where((Payment p) => p.periodNumber == schedule.periodNumber)
+        .toList(growable: false);
+    final int paid = rows.where((Payment p) => p.isPaid).length;
+    final double collected = rows
+        .where((Payment p) => p.isPaid)
+        .fold<double>(0, (double s, Payment p) => s + p.amount);
+    String? recipient;
+    bool turnDone = false;
+    DateTime? completedAt;
+    for (final CommitteeTurn turn in bundle.turns) {
+      if (turn.periodNumber == schedule.periodNumber) {
+        turnDone = turn.isCompleted;
+        completedAt = turn.completedAt;
+        for (final Member m in bundle.members) {
+          if (m.id == turn.memberId) recipient = m.name;
+        }
+      }
+    }
+    views.add(
+      PeriodView(
+        periodNumber: schedule.periodNumber,
+        label: schedule.label,
+        dueDate: schedule.dueDate,
+        isClosed: schedule.isClosed,
+        totalCount: rows.length,
+        paidCount: paid,
+        pendingCount: rows.length - paid,
+        collectedAmount: collected,
+        expectedAmount: committee.contributionAmount * rows.length,
+        recipientName: recipient,
+        turnCompleted: turnDone,
+        completedAt: completedAt,
+      ),
+    );
+  }
+  views.sort((PeriodView a, PeriodView b) => a.periodNumber.compareTo(b.periodNumber));
+  return views;
 }

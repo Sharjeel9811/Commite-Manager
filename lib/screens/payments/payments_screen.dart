@@ -108,26 +108,94 @@ class _PaymentsScreenState extends State<PaymentsScreen> {
   Future<PaymentMethod?> _askMethod() async {
     return showModalBottomSheet<PaymentMethod>(
       context: context,
-      builder: (BuildContext _) => SafeArea(
+      isScrollControlled: true,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+      ),
+      builder: (BuildContext ctx) => SafeArea(
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: <Widget>[
             const SizedBox(height: AppSpacing.md),
-            ListTile(
-              title: Text('How was it paid?', style: Theme.of(context).textTheme.titleSmall),
+            Container(
+              width: 40, height: 4,
+              decoration: BoxDecoration(
+                color: Theme.of(ctx).colorScheme.outlineVariant,
+                borderRadius: BorderRadius.circular(2),
+              ),
             ),
-            for (final PaymentMethod method in PaymentMethod.values)
+            const SizedBox(height: AppSpacing.md),
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: AppSpacing.xl),
+              child: Row(
+                children: <Widget>[
+                  Text(
+                    'How was it paid?  /  ادائیگی کا طریقہ',
+                    style: Theme.of(ctx).textTheme.titleMedium,
+                  ),
+                ],
+              ),
+            ),
+            const SizedBox(height: AppSpacing.sm),
+            const Divider(),
+            // Online payments
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: AppSpacing.xl, vertical: AppSpacing.xs),
+              child: Text(
+                'Online / آن لائن',
+                style: Theme.of(ctx).textTheme.labelSmall?.copyWith(
+                  color: Theme.of(ctx).colorScheme.primary,
+                ),
+              ),
+            ),
+            for (final PaymentMethod m in <PaymentMethod>[
+              PaymentMethod.easypaisa,
+              PaymentMethod.jazzCash,
+              PaymentMethod.nayaPay,
+              PaymentMethod.sadaPay,
+              PaymentMethod.hbl,
+              PaymentMethod.meezan,
+              PaymentMethod.ubl,
+              PaymentMethod.mcb,
+              PaymentMethod.askari,
+              PaymentMethod.alfalah,
+              PaymentMethod.bankTransfer,
+            ])
               ListTile(
-                leading: const Icon(Icons.account_balance_wallet_outlined),
-                title: Text(method.label),
-                onTap: () => Navigator.pop(context, method),
+                leading: Text(m.emoji, style: const TextStyle(fontSize: 22)),
+                title: Text(m.label),
+                dense: true,
+                onTap: () => Navigator.pop(ctx, m),
+              ),
+            const Divider(),
+            // Offline payments
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: AppSpacing.xl, vertical: AppSpacing.xs),
+              child: Text(
+                'Offline / آف لائن',
+                style: Theme.of(ctx).textTheme.labelSmall?.copyWith(
+                  color: Theme.of(ctx).colorScheme.primary,
+                ),
+              ),
+            ),
+            for (final PaymentMethod m in <PaymentMethod>[
+              PaymentMethod.cash,
+              PaymentMethod.cheque,
+              PaymentMethod.other,
+            ])
+              ListTile(
+                leading: Text(m.emoji, style: const TextStyle(fontSize: 22)),
+                title: Text(m.label),
+                dense: true,
+                onTap: () => Navigator.pop(ctx, m),
               ),
             ListTile(
               leading: const Icon(Icons.close_rounded),
-              title: const Text('Cancel'),
-              onTap: () => Navigator.pop(context),
+              title: const Text('Cancel / منسوخ'),
+              dense: true,
+              onTap: () => Navigator.pop(ctx),
             ),
-            const SizedBox(height: AppSpacing.sm),
+            const SizedBox(height: AppSpacing.md),
           ],
         ),
       ),

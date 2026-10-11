@@ -108,14 +108,16 @@ class SettingsProvider extends ChangeNotifier {
     notifyListeners();
     await _settings.save(_preferences);
     if (value) {
+      // Request permission first, then schedule exactly once.
       await _notifications.requestPermission();
       await _reminders.rescheduleAll(
-        reminderHour: _preferences.dailyReminderHour,
-      );
+          reminderHour: _preferences.dailyReminderHour);
     } else {
+      // Cancel everything and reset the counter in one step.
       await _notifications.cancelAll();
       _scheduledCount = 0;
     }
+    await refreshScheduledCount();
     notifyListeners();
   }
 

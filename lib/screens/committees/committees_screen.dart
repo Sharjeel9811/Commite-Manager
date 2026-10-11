@@ -10,6 +10,7 @@ import '../../providers/committee_provider.dart' show AsyncValue, CommitteeProvi
 import '../../providers/locale_provider.dart';
 import '../../widgets/entity_tiles.dart';
 import '../../widgets/state_views.dart';
+import 'join_committee_screen.dart';
 
 /// Every committee, searchable and filterable by status.
 ///
@@ -43,6 +44,15 @@ class _CommitteesScreenState extends State<CommitteesScreen> {
       appBar: AppBar(
         title: Text(s.navCommittees),
         actions: <Widget>[
+          IconButton(
+            tooltip: 'Join a committee',
+            icon: const Icon(Icons.group_add_rounded),
+            onPressed: () => Navigator.of(context).push(
+              MaterialPageRoute<void>(
+                builder: (_) => const JoinCommitteeScreen(),
+              ),
+            ),
+          ),
           IconButton(
             tooltip: s.refresh,
             icon: const Icon(Icons.refresh_rounded),

@@ -40,6 +40,10 @@ dependencies:
   # credentials, so `http` is the only way to reach the Nodemailer server.
   http: ^1.2.2
 
+  # PDF report generation for organizer
+  pdf: ^3.11.1
+  printing: ^5.13.2
+
 dev_dependencies:
   flutter_test:
     sdk: flutter

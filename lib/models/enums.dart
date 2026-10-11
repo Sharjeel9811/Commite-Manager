@@ -158,12 +158,23 @@ enum PaymentFilter {
 }
 
 /// Optional extra fields captured when a payment is recorded.
+///
+/// Expanded with all major Pakistan payment channels (banks + fintech).
 enum PaymentMethod {
-  cash('Cash'),
-  bankTransfer('Bank transfer'),
-  easypaisa('Easypaisa / JazzCash'),
-  cheque('Cheque'),
-  other('Other');
+  cash('Cash / نقد'),
+  easypaisa('Easypaisa'),
+  jazzCash('JazzCash'),
+  nayaPay('NayaPay'),
+  sadaPay('SadaPay'),
+  bankTransfer('Bank Transfer / بینک ٹرانسفر'),
+  hbl('HBL Mobile'),
+  meezan('Meezan Bank'),
+  ubl('UBL Omni'),
+  mcb('MCB'),
+  askari('Askari Bank'),
+  alfalah('Bank Alfalah'),
+  cheque('Cheque / چیک'),
+  other('Other / دیگر');
 
   const PaymentMethod(this.label);
 
@@ -176,6 +187,24 @@ enum PaymentMethod {
     }
     return PaymentMethod.other;
   }
+
+  /// Icon to show next to the payment method in the UI.
+  String get emoji => switch (this) {
+    PaymentMethod.cash         => '💵',
+    PaymentMethod.easypaisa    => '📱',
+    PaymentMethod.jazzCash     => '📱',
+    PaymentMethod.nayaPay      => '📱',
+    PaymentMethod.sadaPay      => '📱',
+    PaymentMethod.bankTransfer => '🏦',
+    PaymentMethod.hbl          => '🏦',
+    PaymentMethod.meezan       => '🏦',
+    PaymentMethod.ubl          => '🏦',
+    PaymentMethod.mcb          => '🏦',
+    PaymentMethod.askari       => '🏦',
+    PaymentMethod.alfalah      => '🏦',
+    PaymentMethod.cheque       => '📄',
+    PaymentMethod.other        => '💳',
+  };
 }
 
 /// Who a member is inside the committee.

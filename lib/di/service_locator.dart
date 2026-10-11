@@ -22,6 +22,8 @@ import '../services/cloud_sync_service.dart';
 import '../services/committee_service.dart';
 import '../services/demo_data_service.dart';
 import '../services/implementations/gateway_otp_sender.dart';
+import '../services/join_code_service.dart';
+import '../services/report_service.dart';
 import '../services/implementations/local_biometric_service.dart';
 import '../services/implementations/local_notification_service.dart';
 import '../services/implementations/supabase_otp_sender.dart';
@@ -299,5 +301,9 @@ class ServiceLocator {
         cloudSync: get<CloudSyncService>(),
       ),
     );
+    // Join-code service uses same gateway URL and API key as OTP transport.
+    register<JoinCodeService>(JoinCodeService());
+    // PDF report generator — no constructor dependencies.
+    register<ReportService>(const ReportService());
   }
 }

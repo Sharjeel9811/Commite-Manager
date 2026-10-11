@@ -425,6 +425,75 @@ app.get('/api/sync/pull', verifiedEmail, async (req, res) => {
   }
 });
 
+// ── POST /api/committees/share  — organiser shares a committee via a join code
+// Body: { committee: {...}, members: [...] }
+// Auth: Bearer token (from verify-otp response)
+// Returns: { code: "ABC123", expiresAt: "..." }
+app.post('/api/committees/share', requireApiKey, verifiedEmail, async (req, res) => {
+  const payload = req.body;
+  if (!payload?.committee || !Array.isArray(payload?.members)) {
+    return res.status(400).json({ error: 'committee and members are required.' });
+  }
+
+  // Generate a 6-char alphanumeric join code (uppercase, no ambiguous chars)
+  const alphabet = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
+  let code = '';
+  const bytes = crypto.randomBytes(6);
+  for (let i = 0; i < 6; i++) {
+    code += alphabet[bytes[i] % alphabet.length];
+  }
+
+  const expiresAt = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000); // 7 days
+
+  try {
+    const db = await mongo.getDatabase();
+    await db.collection('join_codes').insertOne({
+      code,
+      ownerEmail: req.syncEmail,
+      committee: payload.committee,
+      members: payload.members,
+      createdAt: new Date(),
+      expiresAt,
+    });
+    log('info', `Join code ${code} created by ${maskEmail(req.syncEmail)}`);
+    return res.json({ code, expiresAt: expiresAt.toISOString() });
+  } catch (error) {
+    log('error', `Share committee failed: ${error.message}`);
+    return res.status(503).json({ error: 'Could not create join code. Please try again.' });
+  }
+});
+
+// ── GET /api/committees/join/:code  — member joins using a code
+// Auth: Bearer token (from verify-otp response)
+// Returns: { committee: {...}, members: [...] }
+app.get('/api/committees/join/:code', requireApiKey, verifiedEmail, async (req, res) => {
+  const code = (req.params.code || '').trim().toUpperCase();
+  if (!/^[A-Z0-9]{6}$/.test(code)) {
+    return res.status(400).json({ error: 'Invalid join code format.' });
+  }
+
+  try {
+    const db = await mongo.getDatabase();
+    const record = await db.collection('join_codes').findOne(
+      { code },
+      { projection: { _id: 0, committee: 1, members: 1, expiresAt: 1 } },
+    );
+
+    if (!record) {
+      return res.status(404).json({ error: 'No committee found for this code. Check the code and try again.' });
+    }
+    if (new Date(record.expiresAt) < new Date()) {
+      return res.status(410).json({ error: 'This join code has expired. Ask the organiser for a new one.' });
+    }
+
+    log('info', `Join code ${code} used by ${maskEmail(req.syncEmail)}`);
+    return res.json({ committee: record.committee, members: record.members });
+  } catch (error) {
+    log('error', `Join committee failed: ${error.message}`);
+    return res.status(503).json({ error: 'Could not fetch committee data. Please try again.' });
+  }
+});
+
 // ─────────────────────────────────────────────────────────────── 404 + errors
 app.use((_req, res) => res.status(404).json({ error: 'Endpoint not found.' }));
 

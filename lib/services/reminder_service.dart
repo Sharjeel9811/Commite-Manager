@@ -17,7 +17,7 @@ import 'payment_calculator.dart';
 /// them. It never touches the notification plugin itself — that is the
 /// implementation's job (Single Responsibility + Dependency Inversion).
 class ReminderService {
-  const ReminderService({
+  ReminderService({
     required NotificationService notificationService,
     required CommitteeRepository committeeRepository,
     required PaymentRepository paymentRepository,
@@ -39,9 +39,20 @@ class ReminderService {
 
   /// Rebuilds every reminder for the whole app. Called at start-up and after
   /// any payment is recorded, so the schedule always matches the data.
+  ///
+  /// Guards against concurrent calls — if a reschedule is already running,
+  /// the second call is silently dropped. This prevents the payment screen
+  /// (which calls reschedule after every tap) from stacking up identical work.
+  bool _rescheduling = false;
+
   Future<void> rescheduleAll({int reminderHour = 9}) async {
+    if (_rescheduling) return; // drop concurrent duplicates
+    _rescheduling = true;
     try {
-      await _notifications.initialize();
+      // initialize() is called once at app start by the notification service
+      // itself. Calling it again here re-registers the response handler on
+      // some Android versions and causes duplicate notification delivery.
+      // Do NOT call initialize() here.
       await _notifications.cancelAll();
       final List<Committee> committees = await _committees.getAll();
       for (final Committee committee in committees) {
@@ -52,6 +63,8 @@ class ReminderService {
     } catch (error) {
       // A reminder failure must never interrupt a payment.
       _log.error('Could not rebuild reminders', error);
+    } finally {
+      _rescheduling = false;
     }
   }
 
