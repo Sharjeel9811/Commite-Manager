@@ -23,6 +23,7 @@ class Payment {
     required this.createdAt,
     this.paidDate,
     this.method,
+    this.proofPath,
     this.notes,
     this.updatedAt,
   });
@@ -40,6 +41,7 @@ class Payment {
   final DateTime? paidDate;
   final PaymentStatus status;
   final PaymentMethod? method;
+  final String? proofPath;
   final String? notes;
   final DateTime createdAt;
   final DateTime? updatedAt;
@@ -98,6 +100,7 @@ class Payment {
     'paid_date': paidDate?.millisecondsSinceEpoch,
     'status': status.name,
     'method': method?.name,
+    'proof_path': proofPath,
     'notes': notes,
     'created_at': createdAt.millisecondsSinceEpoch,
     'updated_at': (updatedAt ?? createdAt).millisecondsSinceEpoch,
@@ -116,6 +119,7 @@ class Payment {
         : DateTime.fromMillisecondsSinceEpoch(map['paid_date']! as int),
     status: PaymentStatus.fromStorage(map['status'] as String?),
     method: PaymentMethod.fromStorage(map['method'] as String?),
+    proofPath: map['proof_path'] as String?,
     notes: map['notes'] as String?,
     createdAt: DateTime.fromMillisecondsSinceEpoch(map['created_at']! as int),
     updatedAt: map['updated_at'] == null
@@ -129,6 +133,8 @@ class Payment {
     bool clearPaidDate = false,
     PaymentMethod? method,
     bool clearMethod = false,
+    String? proofPath,
+    bool clearProofPath = false,
     String? notes,
     DateTime? updatedAt,
   }) => Payment(
@@ -142,6 +148,7 @@ class Payment {
     paidDate: clearPaidDate ? null : (paidDate ?? this.paidDate),
     status: status ?? this.status,
     method: clearMethod ? null : (method ?? this.method),
+    proofPath: clearProofPath ? null : (proofPath ?? this.proofPath),
     notes: notes ?? this.notes,
     createdAt: createdAt,
     updatedAt: updatedAt ?? DateTime.now(),
@@ -159,6 +166,7 @@ class Payment {
     paidDate: paidDate,
     status: status,
     method: method,
+    proofPath: proofPath,
     notes: notes,
     createdAt: createdAt,
     updatedAt: DateTime.now(),

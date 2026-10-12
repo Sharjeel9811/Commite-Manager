@@ -168,6 +168,15 @@ class AppDatabase {
           _log.warn('Skipping "${_short(statement)}": ${error.message}');
         }
       }
+      if (oldVersion < 3) {
+        for (final String statement in DbSchema.upgrade2to3) {
+          try {
+            await db.execute(statement);
+          } on DatabaseException catch (error) {
+            _log.warn('Skipping "${_short(statement)}": ${error.message}');
+          }
+        }
+      }
     }
   }
 

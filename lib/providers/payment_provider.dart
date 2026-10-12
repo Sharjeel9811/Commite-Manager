@@ -124,13 +124,23 @@ class PaymentProvider extends ChangeNotifier {
   // --------------------------------------------------------------- Mutations
 
   /// Marks one row as paid and rebuilds the row list.
-  Future<String?> markPaid(String paymentId, {PaymentMethod? method, String? notes}) async {
+  Future<String?> markPaid(
+    String paymentId, {
+    PaymentMethod? method,
+    String? proofPath,
+    String? notes,
+  }) async {
     final String? id = _committeeId;
     if (id == null) return 'No committee is open.';
     _pendingIds.add(paymentId);
     notifyListeners();
     try {
-      await _payments.markPaid(paymentId: paymentId, method: method, notes: notes);
+      await _payments.markPaid(
+        paymentId: paymentId,
+        method: method,
+        proofPath: proofPath,
+        notes: notes,
+      );
       await _refreshAfterPayment(id);
       return null;
     } catch (error) {

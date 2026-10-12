@@ -44,20 +44,29 @@ void main() {
 
     test('true inside the shared window', () {
       expect(
-        AppDateUtils.isDueSoon(AppDateUtils.addDays(today, AppConstants.dueSoonWindowDays), asOf: today),
+        AppDateUtils.isDueSoon(
+          AppDateUtils.addDays(today, AppConstants.dueSoonWindowDays),
+          asOf: today,
+        ),
         isTrue,
       );
     });
 
     test('false just after the window', () {
       expect(
-        AppDateUtils.isDueSoon(AppDateUtils.addDays(today, AppConstants.dueSoonWindowDays + 1), asOf: today),
+        AppDateUtils.isDueSoon(
+          AppDateUtils.addDays(today, AppConstants.dueSoonWindowDays + 1),
+          asOf: today,
+        ),
         isFalse,
       );
     });
 
     test('false for a past due date', () {
-      expect(AppDateUtils.isDueSoon(AppDateUtils.addDays(today, -1), asOf: today), isFalse);
+      expect(
+        AppDateUtils.isDueSoon(AppDateUtils.addDays(today, -1), asOf: today),
+        isFalse,
+      );
     });
   });
 
@@ -70,61 +79,91 @@ void main() {
 
     test('one day ahead', () {
       expect(
-        AppDateUtils.relativeDueText(AppDateUtils.addDays(today, 1), asOf: today),
+        AppDateUtils.relativeDueText(
+          AppDateUtils.addDays(today, 1),
+          asOf: today,
+        ),
         'Due tomorrow',
       );
     });
 
     test('a few days ahead', () {
       expect(
-        AppDateUtils.relativeDueText(AppDateUtils.addDays(today, 3), asOf: today),
+        AppDateUtils.relativeDueText(
+          AppDateUtils.addDays(today, 3),
+          asOf: today,
+        ),
         'Due in 3 days',
       );
     });
 
     test('switches to weeks after a week', () {
       expect(
-        AppDateUtils.relativeDueText(AppDateUtils.addDays(today, 7), asOf: today),
+        AppDateUtils.relativeDueText(
+          AppDateUtils.addDays(today, 7),
+          asOf: today,
+        ),
         'Due in 1 week',
       );
       expect(
-        AppDateUtils.relativeDueText(AppDateUtils.addDays(today, 14), asOf: today),
+        AppDateUtils.relativeDueText(
+          AppDateUtils.addDays(today, 14),
+          asOf: today,
+        ),
         'Due in 2 weeks',
       );
     });
 
     test('switches to months after 30 days', () {
       expect(
-        AppDateUtils.relativeDueText(AppDateUtils.addDays(today, 30), asOf: today),
+        AppDateUtils.relativeDueText(
+          AppDateUtils.addDays(today, 30),
+          asOf: today,
+        ),
         'Due in 1 month',
       );
       expect(
-        AppDateUtils.relativeDueText(AppDateUtils.addDays(today, 61), asOf: today),
+        AppDateUtils.relativeDueText(
+          AppDateUtils.addDays(today, 61),
+          asOf: today,
+        ),
         'Due in 3 months',
       );
     });
 
     test('one day late', () {
       expect(
-        AppDateUtils.relativeDueText(AppDateUtils.addDays(today, -1), asOf: today),
+        AppDateUtils.relativeDueText(
+          AppDateUtils.addDays(today, -1),
+          asOf: today,
+        ),
         'Overdue by 1 day',
       );
     });
 
     test('several days late', () {
       expect(
-        AppDateUtils.relativeDueText(AppDateUtils.addDays(today, -3), asOf: today),
+        AppDateUtils.relativeDueText(
+          AppDateUtils.addDays(today, -3),
+          asOf: today,
+        ),
         'Overdue by 3 days',
       );
     });
 
     test('late in weeks and months', () {
       expect(
-        AppDateUtils.relativeDueText(AppDateUtils.addDays(today, -8), asOf: today),
+        AppDateUtils.relativeDueText(
+          AppDateUtils.addDays(today, -8),
+          asOf: today,
+        ),
         'Overdue by 2 weeks',
       );
       expect(
-        AppDateUtils.relativeDueText(AppDateUtils.addDays(today, -45), asOf: today),
+        AppDateUtils.relativeDueText(
+          AppDateUtils.addDays(today, -45),
+          asOf: today,
+        ),
         'Overdue by 2 months',
       );
     });
@@ -145,7 +184,10 @@ void main() {
     });
 
     test('addMonths handles year boundaries', () {
-      expect(AppDateUtils.addMonths(DateTime(2026, 1, 31), -1), DateTime(2025, 12, 31));
+      expect(
+        AppDateUtils.addMonths(DateTime(2026, 1, 31), -1),
+        DateTime(2025, 12, 31),
+      );
     });
 
     test('addDays is calendar-daily, not 24-hourly', () {
@@ -188,9 +230,7 @@ void main() {
     });
 
     test('a recently overdue row is overdue but not severe', () {
-      final Payment p = build(
-        dueDate: DateTime(2026, 9, 30),
-      );
+      final Payment p = build(dueDate: DateTime(2026, 9, 30));
       expect(p.isOverdue, isTrue);
       expect(p.isSeverelyOverdue, isFalse);
       // Age buckets: 30+ days escalates, below threshold does not.
@@ -199,7 +239,10 @@ void main() {
 
     test('a row late past the escalation threshold is severely overdue', () {
       final Payment p = build(dueDate: DateTime(2026, 8, 1));
-      expect(p.daysOverdue, greaterThanOrEqualTo(AppConstants.severelyOverdueDays));
+      expect(
+        p.daysOverdue,
+        greaterThanOrEqualTo(AppConstants.severelyOverdueDays),
+      );
       expect(p.isSeverelyOverdue, isTrue);
     });
 
@@ -221,6 +264,27 @@ void main() {
     test('overdueLabel escalates wording past the threshold', () {
       final Payment p = build(dueDate: DateTime(2026, 8, 1));
       expect(p.overdueLabel, contains('Severely overdue'));
+    });
+  });
+
+  group('PaymentFrequency.daily', () {
+    test('advances one calendar day for each period', () {
+      final DateTime start = DateTime(2026, 10, 31);
+      expect(
+        PaymentFrequency.daily.dueDateForPeriod(2, start),
+        DateTime(2026, 11, 1),
+      );
+      expect(
+        PaymentFrequency.daily.dueDateForPeriod(14, start),
+        DateTime(2026, 11, 13),
+      );
+    });
+
+    test('uses an English day label', () {
+      expect(
+        PaymentFrequency.daily.periodLabel(1, DateTime(2026, 10, 12)),
+        'Day 12 Oct',
+      );
     });
   });
 }

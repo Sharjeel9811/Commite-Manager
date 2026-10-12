@@ -1,10 +1,9 @@
-﻿import 'package:intl/intl.dart';
+import 'package:intl/intl.dart';
 import 'package:pdf/pdf.dart';
 import 'package:pdf/widgets.dart' as pw;
 import 'package:printing/printing.dart';
 
 import '../models/committee.dart';
-import '../models/enums.dart';
 import '../models/member.dart';
 import '../models/payment.dart';
 import '../models/payment_schedule.dart';
@@ -16,19 +15,14 @@ import '../services/committee_service.dart';
 class ReportService {
   const ReportService();
 
+  static const String reportFilename = 'committee_report.pdf';
+
   // â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ public API
 
   /// Builds the PDF and immediately opens the OS share sheet / print dialog.
-  Future<void> generateAndShare({
-    required CommitteeBundle bundle,
-  }) async {
+  Future<void> generateAndShare({required CommitteeBundle bundle}) async {
     final pw.Document pdf = await _buildPdf(bundle);
-    final String filename =
-        '${_slug(bundle.committee.name)}_report_${_stamp()}.pdf';
-    await Printing.sharePdf(
-      bytes: await pdf.save(),
-      filename: filename,
-    );
+    await Printing.sharePdf(bytes: await pdf.save(), filename: reportFilename);
   }
 
   // â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ PDF layout
@@ -39,41 +33,41 @@ class ReportService {
       author: 'Committee Manager',
     );
 
-    // Pull a built-in font that supports Latin and basic symbols
-    final pw.Font regular = await PdfGoogleFonts.nunitoRegular();
-    final pw.Font bold    = await PdfGoogleFonts.nunitoBold();
-
-    final pw.ThemeData theme = pw.ThemeData.withFont(
-      base: regular,
-      bold: bold,
-    );
+    // Use built-in Helvetica - no network call, always works offline.
+    final pw.ThemeData theme = pw.ThemeData.base();
 
     final Committee c = bundle.committee;
 
     // â”€â”€ Summary stats â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
-    final int totalMembers  = bundle.members.length;
-    final double collected  = bundle.payments
+    final int totalMembers = bundle.members.length;
+    final double collected = bundle.payments
         .where((Payment p) => p.isPaid)
         .fold<double>(0, (double s, Payment p) => s + p.amount);
-    final double pending    = bundle.payments
+    final double pending = bundle.payments
         .where((Payment p) => !p.isPaid)
         .fold<double>(0, (double s, Payment p) => s + p.amount);
-    final int paidCount     = bundle.payments.where((Payment p) => p.isPaid).length;
-    final int overdueCount  = bundle.payments
-        .where((Payment p) =>
-            !p.isPaid &&
-            p.dueDate.isBefore(DateTime.now()))
+    final int paidCount = bundle.payments.where((Payment p) => p.isPaid).length;
+    final int overdueCount = bundle.payments
+        .where((Payment p) => !p.isPaid && p.dueDate.isBefore(DateTime.now()))
         .length;
 
     doc.addPage(
       pw.MultiPage(
         theme: theme,
         pageFormat: PdfPageFormat.a4,
+        maxPages: 100,
         margin: const pw.EdgeInsets.all(32),
         header: (pw.Context ctx) => _header(ctx, c),
         footer: (pw.Context ctx) => _footer(ctx),
         build: (pw.Context ctx) => <pw.Widget>[
-          _summarySection(c, totalMembers, collected, pending, paidCount, overdueCount),
+          _summarySection(
+            c,
+            totalMembers,
+            collected,
+            pending,
+            paidCount,
+            overdueCount,
+          ),
           pw.SizedBox(height: 20),
           _membersSection(bundle),
           pw.SizedBox(height: 20),
@@ -93,7 +87,8 @@ class ReportService {
     return pw.Container(
       decoration: const pw.BoxDecoration(
         border: pw.Border(
-            bottom: pw.BorderSide(color: PdfColors.indigo700, width: 2)),
+          bottom: pw.BorderSide(color: PdfColors.indigo700, width: 2),
+        ),
       ),
       padding: const pw.EdgeInsets.only(bottom: 8),
       margin: const pw.EdgeInsets.only(bottom: 12),
@@ -139,7 +134,8 @@ class ReportService {
     return pw.Container(
       decoration: const pw.BoxDecoration(
         border: pw.Border(
-            top: pw.BorderSide(color: PdfColors.grey300, width: 0.5)),
+          top: pw.BorderSide(color: PdfColors.grey300, width: 0.5),
+        ),
       ),
       padding: const pw.EdgeInsets.only(top: 4),
       child: pw.Row(
@@ -169,7 +165,7 @@ class ReportService {
     return pw.Column(
       crossAxisAlignment: pw.CrossAxisAlignment.start,
       children: <pw.Widget>[
-        _sectionTitle('Committee Summary  /  Ø®Ù„Ø§ØµÛ'),
+        _sectionTitle('Committee Summary'),
         pw.SizedBox(height: 8),
         pw.Container(
           decoration: pw.BoxDecoration(
@@ -198,10 +194,11 @@ class ReportService {
                   crossAxisAlignment: pw.CrossAxisAlignment.start,
                   children: <pw.Widget>[
                     _kv('Total Members', '$totalMembers'),
-                    _kv('Contribution / Period',
-                        'Rs ${_money(c.contributionAmount)}'),
-                    _kv('Pot Per Turn',
-                        'Rs ${_money(c.totalPoolPerTurn)}'),
+                    _kv(
+                      'Contribution / Period',
+                      'Rs ${_money(c.contributionAmount)}',
+                    ),
+                    _kv('Pot Per Turn', 'Rs ${_money(c.totalPoolPerTurn)}'),
                     _kv('Total Periods', '${c.durationPeriods}'),
                     _kv('Completed Turns', '${c.completedTurns}'),
                   ],
@@ -214,17 +211,33 @@ class ReportService {
         // Financial summary row
         pw.Row(
           children: <pw.Widget>[
-            _statBox('Collected', 'Rs ${_money(collected)}',
-                PdfColors.green700, PdfColors.green50),
+            _statBox(
+              'Collected',
+              'Rs ${_money(collected)}',
+              PdfColors.green700,
+              PdfColors.green50,
+            ),
             pw.SizedBox(width: 8),
-            _statBox('Pending', 'Rs ${_money(pending)}',
-                PdfColors.orange700, PdfColors.orange50),
+            _statBox(
+              'Pending',
+              'Rs ${_money(pending)}',
+              PdfColors.orange700,
+              PdfColors.orange50,
+            ),
             pw.SizedBox(width: 8),
-            _statBox('Paid Payments', '$paidCount',
-                PdfColors.blue700, PdfColors.blue50),
+            _statBox(
+              'Paid Payments',
+              '$paidCount',
+              PdfColors.blue700,
+              PdfColors.blue50,
+            ),
             pw.SizedBox(width: 8),
-            _statBox('Overdue', '$overdueCount',
-                PdfColors.red700, PdfColors.red50),
+            _statBox(
+              'Overdue',
+              '$overdueCount',
+              PdfColors.red700,
+              PdfColors.red50,
+            ),
           ],
         ),
       ],
@@ -232,25 +245,35 @@ class ReportService {
   }
 
   pw.Widget _membersSection(CommitteeBundle bundle) {
-    final List<Member> members = bundle.members
+    final List<Member> members = List<Member>.of(bundle.members)
       ..sort((Member a, Member b) => a.turnNumber.compareTo(b.turnNumber));
+    final Map<String, List<Payment>> paymentsByMember =
+        <String, List<Payment>>{};
+    for (final Payment payment in bundle.payments) {
+      (paymentsByMember[payment.memberId] ??= <Payment>[]).add(payment);
+    }
 
     return pw.Column(
       crossAxisAlignment: pw.CrossAxisAlignment.start,
       children: <pw.Widget>[
-        _sectionTitle('Members & Collection Order  /  Ø§Ø±Ø§Ú©ÛŒÙ†'),
+        _sectionTitle('Members and Collection Order'),
         pw.SizedBox(height: 8),
         pw.TableHelper.fromTextArray(
           headers: <String>[
-            'Turn #', 'Name', 'Phone', 'Role', 'Paid', 'Pending', 'Amount Paid',
+            'Turn #',
+            'Name',
+            'Phone',
+            'Role',
+            'Paid',
+            'Pending',
+            'Amount Paid',
           ],
           headerStyle: pw.TextStyle(
             fontWeight: pw.FontWeight.bold,
             color: PdfColors.white,
             fontSize: 9,
           ),
-          headerDecoration:
-              const pw.BoxDecoration(color: PdfColors.indigo700),
+          headerDecoration: const pw.BoxDecoration(color: PdfColors.indigo700),
           cellStyle: pw.TextStyle(fontSize: 8),
           cellAlignments: <int, pw.Alignment>{
             0: pw.Alignment.center,
@@ -258,12 +281,10 @@ class ReportService {
             5: pw.Alignment.center,
             6: pw.Alignment.centerRight,
           },
-          oddRowDecoration:
-              const pw.BoxDecoration(color: PdfColors.grey100),
+          oddRowDecoration: const pw.BoxDecoration(color: PdfColors.grey100),
           data: members.map((Member m) {
-            final List<Payment> mPayments = bundle.payments
-                .where((Payment p) => p.memberId == m.id)
-                .toList();
+            final List<Payment> mPayments =
+                paymentsByMember[m.id] ?? <Payment>[];
             final int paid = mPayments.where((Payment p) => p.isPaid).length;
             final int pend = mPayments.where((Payment p) => !p.isPaid).length;
             final double amount = mPayments
@@ -285,56 +306,61 @@ class ReportService {
   }
 
   pw.Widget _periodsSection(CommitteeBundle bundle) {
-    final List<PaymentSchedule> periods = bundle.periods
-      ..sort((PaymentSchedule a, PaymentSchedule b) =>
-          a.periodNumber.compareTo(b.periodNumber));
+    final List<PaymentSchedule> periods =
+        List<PaymentSchedule>.of(bundle.periods)..sort(
+          (PaymentSchedule a, PaymentSchedule b) =>
+              a.periodNumber.compareTo(b.periodNumber),
+        );
+    final Map<int, List<Payment>> paymentsByPeriod = <int, List<Payment>>{};
+    for (final Payment payment in bundle.payments) {
+      (paymentsByPeriod[payment.periodNumber] ??= <Payment>[]).add(payment);
+    }
+    final Map<String, String> memberNames = <String, String>{
+      for (final Member member in bundle.members) member.id: member.name,
+    };
+    final Map<int, String> recipientByPeriod = <int, String>{
+      for (final turn in bundle.turns)
+        turn.periodNumber: memberNames[turn.memberId] ?? '-',
+    };
 
     return pw.Column(
       crossAxisAlignment: pw.CrossAxisAlignment.start,
       children: <pw.Widget>[
-        _sectionTitle('Collection Periods  /  Ø§Ø¯ÙˆØ§Ø±'),
+        _sectionTitle('Collection Periods'),
         pw.SizedBox(height: 8),
         pw.TableHelper.fromTextArray(
           headers: <String>[
-            'Period', 'Due Date', 'Paid', 'Total', 'Collected', 'Recipient', 'Status',
+            'Period',
+            'Due Date',
+            'Paid',
+            'Total',
+            'Collected',
+            'Recipient',
+            'Status',
           ],
           headerStyle: pw.TextStyle(
             fontWeight: pw.FontWeight.bold,
             color: PdfColors.white,
             fontSize: 9,
           ),
-          headerDecoration:
-              const pw.BoxDecoration(color: PdfColors.indigo700),
+          headerDecoration: const pw.BoxDecoration(color: PdfColors.indigo700),
           cellStyle: pw.TextStyle(fontSize: 8),
           cellAlignments: <int, pw.Alignment>{
             2: pw.Alignment.center,
             3: pw.Alignment.center,
             4: pw.Alignment.centerRight,
           },
-          oddRowDecoration:
-              const pw.BoxDecoration(color: PdfColors.grey100),
+          oddRowDecoration: const pw.BoxDecoration(color: PdfColors.grey100),
           data: periods.map((PaymentSchedule ps) {
-            final List<Payment> pp = bundle.payments
-                .where((Payment p) => p.periodNumber == ps.periodNumber)
-                .toList();
+            final List<Payment> pp =
+                paymentsByPeriod[ps.periodNumber] ?? <Payment>[];
             final int paidCount = pp.where((Payment p) => p.isPaid).length;
             final double paidAmt = pp
                 .where((Payment p) => p.isPaid)
                 .fold<double>(0, (double s, Payment p) => s + p.amount);
 
-            // Find recipient for this period
-            String recipientName = '-';
-            for (final t in bundle.turns) {
-              if (t.periodNumber == ps.periodNumber) {
-                for (final m in bundle.members) {
-                  if (m.id == t.memberId) {
-                    recipientName = m.name;
-                    break;
-                  }
-                }
-                break;
-              }
-            }
+            final String recipientName =
+                recipientByPeriod[ps.periodNumber] ?? '-';
 
             final bool complete = paidCount == pp.length && pp.isNotEmpty;
             return <String>[
@@ -353,11 +379,11 @@ class ReportService {
   }
 
   pw.Widget _paymentDetailsSection(CommitteeBundle bundle) {
-    final List<Payment> paid = bundle.payments
-        .where((Payment p) => p.isPaid)
-        .toList()
-      ..sort((Payment a, Payment b) =>
-          (b.paidDate ?? b.dueDate).compareTo(a.paidDate ?? a.dueDate));
+    final List<Payment> paid =
+        bundle.payments.where((Payment p) => p.isPaid).toList()..sort(
+          (Payment a, Payment b) =>
+              (b.paidDate ?? b.dueDate).compareTo(a.paidDate ?? a.dueDate),
+        );
 
     if (paid.isEmpty) return pw.SizedBox();
 
@@ -369,25 +395,19 @@ class ReportService {
     return pw.Column(
       crossAxisAlignment: pw.CrossAxisAlignment.start,
       children: <pw.Widget>[
-        _sectionTitle('Payment History  /  Ø§Ø¯Ø§Ø¦ÛŒÚ¯ÛŒ Ú©Ø§ Ø±ÛŒÚ©Ø§Ø±Úˆ'),
+        _sectionTitle('Payment History'),
         pw.SizedBox(height: 8),
         pw.TableHelper.fromTextArray(
-          headers: <String>[
-            'Member', 'Period', 'Amount', 'Method', 'Paid On',
-          ],
+          headers: <String>['Member', 'Period', 'Amount', 'Method', 'Paid On'],
           headerStyle: pw.TextStyle(
             fontWeight: pw.FontWeight.bold,
             color: PdfColors.white,
             fontSize: 9,
           ),
-          headerDecoration:
-              const pw.BoxDecoration(color: PdfColors.indigo700),
+          headerDecoration: const pw.BoxDecoration(color: PdfColors.indigo700),
           cellStyle: pw.TextStyle(fontSize: 8),
-          cellAlignments: <int, pw.Alignment>{
-            2: pw.Alignment.centerRight,
-          },
-          oddRowDecoration:
-              const pw.BoxDecoration(color: PdfColors.grey100),
+          cellAlignments: <int, pw.Alignment>{2: pw.Alignment.centerRight},
+          oddRowDecoration: const pw.BoxDecoration(color: PdfColors.grey100),
           data: paid.take(200).map((Payment p) {
             return <String>[
               memberNames[p.memberId] ?? '-',
@@ -408,7 +428,8 @@ class ReportService {
     return pw.Container(
       decoration: const pw.BoxDecoration(
         border: pw.Border(
-            bottom: pw.BorderSide(color: PdfColors.indigo300, width: 1)),
+          bottom: pw.BorderSide(color: PdfColors.indigo300, width: 1),
+        ),
       ),
       padding: const pw.EdgeInsets.only(bottom: 4),
       child: pw.Text(
@@ -432,8 +453,7 @@ class ReportService {
             width: 120,
             child: pw.Text(
               key,
-              style: pw.TextStyle(
-                  fontSize: 9, color: PdfColors.grey600),
+              style: pw.TextStyle(fontSize: 9, color: PdfColors.grey600),
             ),
           ),
           pw.Text(
@@ -446,7 +466,11 @@ class ReportService {
   }
 
   pw.Widget _statBox(
-      String label, String value, PdfColor textColor, PdfColor bgColor) {
+    String label,
+    String value,
+    PdfColor textColor,
+    PdfColor bgColor,
+  ) {
     return pw.Expanded(
       child: pw.Container(
         padding: const pw.EdgeInsets.all(8),
@@ -458,15 +482,19 @@ class ReportService {
         child: pw.Column(
           crossAxisAlignment: pw.CrossAxisAlignment.start,
           children: <pw.Widget>[
-            pw.Text(label,
-                style:
-                    pw.TextStyle(fontSize: 8, color: PdfColors.grey600)),
+            pw.Text(
+              label,
+              style: pw.TextStyle(fontSize: 8, color: PdfColors.grey600),
+            ),
             pw.SizedBox(height: 2),
-            pw.Text(value,
-                style: pw.TextStyle(
-                    fontSize: 11,
-                    fontWeight: pw.FontWeight.bold,
-                    color: textColor)),
+            pw.Text(
+              value,
+              style: pw.TextStyle(
+                fontSize: 11,
+                fontWeight: pw.FontWeight.bold,
+                color: textColor,
+              ),
+            ),
           ],
         ),
       ),
@@ -477,32 +505,26 @@ class ReportService {
 
   String _fmt(DateTime d) => DateFormat('dd MMM yyyy').format(d);
 
-  String _money(double v) =>
-      NumberFormat('#,##0', 'en_US').format(v);
-
-  String _stamp() => DateFormat('yyyyMMdd_HHmm').format(DateTime.now());
-
-  String _slug(String name) =>
-      name.toLowerCase().replaceAll(RegExp(r'[^a-z0-9]+'), '_');
+  String _money(double v) => NumberFormat('#,##0', 'en_US').format(v);
 
   String _methodLabel(String? method) {
     if (method == null || method.isEmpty) return 'Cash';
     // Match against PaymentMethod enum name
     return switch (method) {
-      'cash'         => 'Cash',
-      'easypaisa'    => 'Easypaisa',
-      'jazzCash'     => 'JazzCash',
-      'nayaPay'      => 'NayaPay',
-      'sadaPay'      => 'SadaPay',
+      'cash' => 'Cash',
+      'easypaisa' => 'Easypaisa',
+      'jazzCash' => 'JazzCash',
+      'nayaPay' => 'NayaPay',
+      'sadaPay' => 'SadaPay',
       'bankTransfer' => 'Bank Transfer',
-      'hbl'          => 'HBL',
-      'meezan'       => 'Meezan',
-      'ubl'          => 'UBL',
-      'mcb'          => 'MCB',
-      'askari'       => 'Askari',
-      'alfalah'      => 'Alfalah',
-      'cheque'       => 'Cheque',
-      _              => 'Other',
+      'hbl' => 'HBL',
+      'meezan' => 'Meezan',
+      'ubl' => 'UBL',
+      'mcb' => 'MCB',
+      'askari' => 'Askari',
+      'alfalah' => 'Alfalah',
+      'cheque' => 'Cheque',
+      _ => 'Other',
     };
   }
 }

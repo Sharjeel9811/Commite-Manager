@@ -16,7 +16,13 @@ abstract interface class PaymentRepository {
   /// Bulk insert, used when the schedule for every member is generated.
   Future<void> insertAll(List<Payment> payments);
   Future<void> update(Payment payment);
-  Future<void> markPaid(String paymentId, DateTime paidAt, {String? method, String? notes});
+  Future<void> markPaid(
+    String paymentId,
+    DateTime paidAt, {
+    String? method,
+    String? proofPath,
+    String? notes,
+  });
   Future<void> markUnpaid(String paymentId);
   Future<void> deleteById(String id);
   Future<void> deleteByCommittee(String committeeId);

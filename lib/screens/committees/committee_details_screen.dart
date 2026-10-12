@@ -12,6 +12,7 @@ import '../../models/member.dart';
 import '../../models/statistics.dart';
 import '../../providers/committee_detail_provider.dart';
 import '../../providers/committee_provider.dart';
+import '../../providers/dashboard_provider.dart';
 import '../../services/committee_service.dart' show CommitteeBundle;
 import '../../services/report_service.dart';
 import '../../widgets/app_card.dart';
@@ -207,6 +208,11 @@ class _CommitteeDetailsScreenState extends State<CommitteeDetailsScreen>
 
     try {
       await committees.delete(committee.id);
+      // Explicitly reload the dashboard so it removes the committee immediately
+      // without waiting for the user to pull-to-refresh.
+      if (context.mounted) {
+        context.read<DashboardProvider>().load();
+      }
       navigator.pop();
     } catch (error) {
       messenger.showSnackBar(SnackBar(content: Text(describeError(error))));

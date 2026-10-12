@@ -151,6 +151,7 @@ class PaymentService {
     required String paymentId,
     DateTime? paidAt,
     PaymentMethod? method,
+    String? proofPath,
     String? notes,
   }) async {
     final Payment payment = await getById(paymentId);
@@ -165,6 +166,7 @@ class PaymentService {
         paymentId,
         paidAt ?? DateTime.now(),
         method: method?.name,
+        proofPath: proofPath,
         notes: notes,
       );
       await _turns.reconcileInTransaction(committee);

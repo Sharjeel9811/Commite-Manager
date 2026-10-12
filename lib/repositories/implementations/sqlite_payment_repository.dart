@@ -132,7 +132,13 @@ class SqlitePaymentRepository implements PaymentRepository {
       });
 
   @override
-  Future<void> markPaid(String paymentId, DateTime paidAt, {String? method, String? notes}) =>
+  Future<void> markPaid(
+    String paymentId,
+    DateTime paidAt, {
+    String? method,
+    String? proofPath,
+    String? notes,
+  }) =>
       _appDatabase.guardAsync('Could not mark the payment as paid.', () async {
         final DatabaseExecutor db = await _appDatabase.executor;
         final int rows = await db.update(
@@ -141,6 +147,7 @@ class SqlitePaymentRepository implements PaymentRepository {
             'status': 'paid',
             'paid_date': paidAt.millisecondsSinceEpoch,
             'method': method,
+            'proof_path': proofPath,
             'notes': notes,
             'updated_at': DateTime.now().millisecondsSinceEpoch,
           },
@@ -164,6 +171,7 @@ class SqlitePaymentRepository implements PaymentRepository {
             'status': 'pending',
             'paid_date': null,
             'method': null,
+            'proof_path': null,
             'updated_at': DateTime.now().millisecondsSinceEpoch,
           },
           where: 'id = ?',

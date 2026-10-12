@@ -1,4 +1,4 @@
-import 'package:flutter/material.dart';
+      nnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnimport 'package:flutter/material.dart';
 
 import '../core/utils/app_date_utils.dart';
 
@@ -9,6 +9,7 @@ import '../core/utils/app_date_utils.dart';
 /// project has to change** — that is the Open/Closed Principle applied to the
 /// one place where the whole system would otherwise be hard-coded to "monthly".
 enum PaymentFrequency {
+  daily('Daily', 'Every day'),
   weekly('Weekly', 'Every week'),
   biweekly('Every 2 Weeks', 'Every two weeks'),
   monthly('Monthly', 'Every month'),
@@ -20,15 +21,18 @@ enum PaymentFrequency {
   final String description;
 
   String get storageKey => name;
-
-  static PaymentFrequency fromStorage(String? value) => PaymentFrequency.values.firstWhere(
-    (PaymentFrequency item) => item.name == value,
-    orElse: () => PaymentFrequency.monthly,
-  );
+ 
+  static PaymentFrequency fromStorage(String? value) =>
+      PaymentFrequency.values.firstWhere(
+        (PaymentFrequency item) => item.name == value,
+        orElse: () => PaymentFrequency.monthly,
+      );
 
   /// The due date of the period that starts on/after [from].
   DateTime nextDueDate(DateTime from) {
     switch (this) {
+      case PaymentFrequency.daily:
+        return AppDateUtils.addDays(from, 1);
       case PaymentFrequency.weekly:
         return AppDateUtils.addWeeks(from, 1);
       case PaymentFrequency.biweekly:
@@ -52,6 +56,8 @@ enum PaymentFrequency {
   /// Human readable name of a period, e.g. "October 2026" or "Week of 12 Oct".
   String periodLabel(int period, DateTime dueDate) {
     switch (this) {
+      case PaymentFrequency.daily:
+        return 'Day ${AppDateUtils.formatDayMonth(dueDate)}';
       case PaymentFrequency.weekly:
       case PaymentFrequency.biweekly:
         return 'Week ${AppDateUtils.formatDayMonth(dueDate)}';
@@ -68,6 +74,7 @@ enum PaymentFrequency {
 
   /// Approximate number of days between two periods — used for reminder maths.
   int get approxIntervalDays => switch (this) {
+    PaymentFrequency.daily => 1,
     PaymentFrequency.weekly => 7,
     PaymentFrequency.biweekly => 14,
     PaymentFrequency.monthly => 30,
@@ -75,6 +82,7 @@ enum PaymentFrequency {
   };
 
   IconData get icon => switch (this) {
+    PaymentFrequency.daily => Icons.today,
     PaymentFrequency.weekly => Icons.calendar_view_week,
     PaymentFrequency.biweekly => Icons.calendar_view_week_outlined,
     PaymentFrequency.monthly => Icons.calendar_month,
@@ -94,10 +102,11 @@ enum CommitteeStatus {
   final String label;
   final String description;
 
-  static CommitteeStatus fromStorage(String? value) => CommitteeStatus.values.firstWhere(
-    (CommitteeStatus item) => item.name == value,
-    orElse: () => CommitteeStatus.draft,
-  );
+  static CommitteeStatus fromStorage(String? value) =>
+      CommitteeStatus.values.firstWhere(
+        (CommitteeStatus item) => item.name == value,
+        orElse: () => CommitteeStatus.draft,
+      );
 
   IconData get icon => switch (this) {
     CommitteeStatus.draft => Icons.edit_note,
@@ -137,10 +146,11 @@ enum PaymentStatus {
   final String label;
   final String description;
 
-  static PaymentStatus fromStorage(String? value) => PaymentStatus.values.firstWhere(
-    (PaymentStatus item) => item.name == value,
-    orElse: () => PaymentStatus.pending,
-  );
+  static PaymentStatus fromStorage(String? value) =>
+      PaymentStatus.values.firstWhere(
+        (PaymentStatus item) => item.name == value,
+        orElse: () => PaymentStatus.pending,
+      );
 
   bool get isPaid => this == PaymentStatus.paid;
 }
@@ -180,6 +190,11 @@ enum PaymentMethod {
 
   final String label;
 
+  bool get requiresProof => switch (this) {
+    PaymentMethod.cash || PaymentMethod.cheque || PaymentMethod.other => false,
+    _ => true,
+  };
+
   static PaymentMethod? fromStorage(String? value) {
     if (value == null || value.isEmpty) return null;
     for (final PaymentMethod method in PaymentMethod.values) {
@@ -190,20 +205,20 @@ enum PaymentMethod {
 
   /// Icon to show next to the payment method in the UI.
   String get emoji => switch (this) {
-    PaymentMethod.cash         => '💵',
-    PaymentMethod.easypaisa    => '📱',
-    PaymentMethod.jazzCash     => '📱',
-    PaymentMethod.nayaPay      => '📱',
-    PaymentMethod.sadaPay      => '📱',
+    PaymentMethod.cash => '💵',
+    PaymentMethod.easypaisa => '📱',
+    PaymentMethod.jazzCash => '📱',
+    PaymentMethod.nayaPay => '📱',
+    PaymentMethod.sadaPay => '📱',
     PaymentMethod.bankTransfer => '🏦',
-    PaymentMethod.hbl          => '🏦',
-    PaymentMethod.meezan       => '🏦',
-    PaymentMethod.ubl          => '🏦',
-    PaymentMethod.mcb          => '🏦',
-    PaymentMethod.askari       => '🏦',
-    PaymentMethod.alfalah      => '🏦',
-    PaymentMethod.cheque       => '📄',
-    PaymentMethod.other        => '💳',
+    PaymentMethod.hbl => '🏦',
+    PaymentMethod.meezan => '🏦',
+    PaymentMethod.ubl => '🏦',
+    PaymentMethod.mcb => '🏦',
+    PaymentMethod.askari => '🏦',
+    PaymentMethod.alfalah => '🏦',
+    PaymentMethod.cheque => '📄',
+    PaymentMethod.other => '💳',
   };
 }
 
@@ -268,10 +283,11 @@ enum AppLanguage {
   final String label;
   final String code;
 
-  static AppLanguage fromStorage(String? value) => AppLanguage.values.firstWhere(
-    (AppLanguage item) => item.code == value,
-    orElse: () => AppLanguage.english,
-  );
+  static AppLanguage fromStorage(String? value) =>
+      AppLanguage.values.firstWhere(
+        (AppLanguage item) => item.code == value,
+        orElse: () => AppLanguage.english,
+      );
 }
 
 /// How the app decides which theme to use.
@@ -284,10 +300,11 @@ enum AppThemePreference {
 
   final String label;
 
-  static AppThemePreference fromStorage(String? value) => AppThemePreference.values.firstWhere(
-    (AppThemePreference item) => item.name == value,
-    orElse: () => AppThemePreference.system,
-  );
+  static AppThemePreference fromStorage(String? value) =>
+      AppThemePreference.values.firstWhere(
+        (AppThemePreference item) => item.name == value,
+        orElse: () => AppThemePreference.system,
+      );
 
   ThemeMode get themeMode => switch (this) {
     AppThemePreference.system => ThemeMode.system,

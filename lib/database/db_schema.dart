@@ -165,6 +165,7 @@ CREATE TABLE $payments (
   paid_date     INTEGER,
   status        TEXT    NOT NULL CHECK (status IN ('pending','paid')),
   method        TEXT,
+  proof_path    TEXT,
   notes         TEXT,
   created_at    INTEGER NOT NULL,
   updated_at    INTEGER NOT NULL,
@@ -224,6 +225,10 @@ CREATE TABLE $turns (
     // what the v2 column was created with; `OtpChannel.fromStorage` maps it to
     // email, since SMS no longer exists.
     "ALTER TABLE $users ADD COLUMN preferred_otp_channel TEXT NOT NULL DEFAULT 'sms'",
+  ];
+
+  static const List<String> upgrade2to3 = <String>[
+    'ALTER TABLE $payments ADD COLUMN proof_path TEXT',
   ];
 
   // ---------------------------------------------------------------- Lifecycle

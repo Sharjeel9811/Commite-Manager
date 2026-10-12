@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:image_picker/image_picker.dart';
 import 'package:provider/provider.dart';
 
 import '../../core/theme/app_colors.dart';
@@ -52,30 +53,40 @@ class _PaymentsScreenState extends State<PaymentsScreen> {
     super.dispose();
   }
 
-  /// Quick-tap: mark paid immediately. Cash is the default method so collecting
-  /// a committee stays one-thumb; long-press on the row goes through
-  /// [_markPaidWithMethod] for anyone who actually paid by transfer.
+  /// Tap: always ask how the payment was made, then record it.
+  /// This replaces the old "tap = cash, long-press = choose method" pattern
+  /// which users never discovered.
   Future<void> _markPaid(PaymentProvider payments, PaymentRow row) async {
-    await _recordPaid(payments, row, method: PaymentMethod.cash);
+    final PaymentMethod? method = await _askMethod();
+    if (!mounted || method == null) return;
+    final String? proofPath = await _pickProofIfRequired(method);
+    if (!mounted || (method.requiresProof && proofPath == null)) return;
+    await _recordPaid(payments, row, method: method, proofPath: proofPath);
   }
 
-  /// Long-press: ask how it was paid before marking, for the rarer non-cash
-  /// payments. Cancelling the sheet leaves the row untouched.
+  /// Long-press: same as tap now — consistent behaviour.
   Future<void> _markPaidWithMethod(PaymentProvider payments, PaymentRow row) async {
     final PaymentMethod? method = await _askMethod();
     if (!mounted || method == null) return;
-    await _recordPaid(payments, row, method: method);
+    final String? proofPath = await _pickProofIfRequired(method);
+    if (!mounted || (method.requiresProof && proofPath == null)) return;
+    await _recordPaid(payments, row, method: method, proofPath: proofPath);
   }
 
   Future<void> _recordPaid(
     PaymentProvider payments,
     PaymentRow row, {
     required PaymentMethod? method,
+    String? proofPath,
   }) async {
     final ScaffoldMessengerState messenger = ScaffoldMessenger.of(context);
     final CommitteeDetailProvider detail = context.read<CommitteeDetailProvider>();
 
-    final String? error = await payments.markPaid(row.id, method: method);
+    final String? error = await payments.markPaid(
+      row.id,
+      method: method,
+      proofPath: proofPath,
+    );
     if (!mounted) return;
     // The payment screen and the details screen show the same committee, so the
     // detail snapshot has to be refreshed too or they drift apart.
@@ -87,6 +98,20 @@ class _PaymentsScreenState extends State<PaymentsScreen> {
         backgroundColor: error == null ? AppColors.success : null,
       ),
     );
+  }
+
+  Future<String?> _pickProofIfRequired(PaymentMethod method) async {
+    if (!method.requiresProof) return null;
+    final XFile? image = await ImagePicker().pickImage(
+      source: ImageSource.gallery,
+      imageQuality: 85,
+    );
+    if (image == null && mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('A screenshot is required for ${method.label}.')),
+      );
+    }
+    return image?.path;
   }
 
   Future<void> _markUnpaid(PaymentProvider payments, PaymentRow row) async {

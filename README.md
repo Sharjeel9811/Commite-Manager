@@ -15,6 +15,35 @@ Supabase Auth.
 
 ---
 
+## Committee Logic and Report Rules
+
+The committee rules are intentionally deterministic and are implemented in the domain
+services rather than in the screens:
+
+- A committee has at least two members. Its number of periods always equals its number
+  of members, so each member receives exactly one turn.
+- The first member is the organiser and receives turn 1. The remaining members receive
+  turns in the order entered during creation.
+- For each period, every member pays the configured contribution except the member
+  receiving that period's pot. The pot is therefore
+  `contribution × (member count - 1)`.
+- A turn completes only after all payments for its period are marked paid. The period
+  closes, the next turn becomes active, and the committee becomes completed after the
+  final turn.
+- The roster and contribution amount are locked once payment history exists. This
+  prevents historical payment rows from changing meaning.
+- Supported schedules are **daily**, weekly, every two weeks, monthly, and quarterly.
+  Daily schedules advance by one calendar day, including across month and year
+  boundaries.
+- All committee PDF reports use English labels and are shared with the exact filename
+  `committee_report.pdf`. Report data is indexed before layout so a larger committee
+  does not repeatedly scan the full payment list for every row.
+
+The full formula walkthrough and payment matrix are also maintained in
+[`COMMITTEE_LOGIC.md`](./COMMITTEE_LOGIC.md).
+
+---
+
 ## 🚀 Play Store / Production Build — Required Steps
 
 Before building a release APK or App Bundle for Google Play, you must wire in a
