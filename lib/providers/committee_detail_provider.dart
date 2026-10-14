@@ -167,6 +167,9 @@ class CommitteeDetailProvider extends ChangeNotifier {
   }) async {
     final String? id = _committeeId;
     if (id == null) throw StateError('No committee is open.');
+    if (!canEditRoster) {
+      throw const BusinessRuleException('Members cannot be changed after a payment is marked paid.');
+    }
     final Member member = await _memberService.add(
       committeeId: id,
       name: name,
@@ -200,6 +203,9 @@ class CommitteeDetailProvider extends ChangeNotifier {
   }
 
   Future<void> removeMember(String memberId) async {
+    if (!canEditRoster) {
+      throw const BusinessRuleException('Members cannot be changed after a payment is marked paid.');
+    }
     await _memberService.remove(memberId);
     await _afterRosterChange();
   }
@@ -207,6 +213,9 @@ class CommitteeDetailProvider extends ChangeNotifier {
   Future<void> reorderTurns(List<Member> ordered) async {
     final String? id = _committeeId;
     if (id == null) throw StateError('No committee is open.');
+    if (!canEditRoster) {
+      throw const BusinessRuleException('Members cannot be changed after a payment is marked paid.');
+    }
     await _memberService.reorderTurns(id, ordered);
     await _afterRosterChange();
   }
@@ -221,6 +230,9 @@ class CommitteeDetailProvider extends ChangeNotifier {
   Future<void> updateContributionAmount(double amount) async {
     final String? id = _committeeId;
     if (id == null) throw StateError('No committee is open.');
+    if (_hasPaidPayments) {
+      throw const BusinessRuleException('The amount cannot change after a payment is marked paid.');
+    }
     await _committees.updateContribution(id: id, contributionAmount: amount);
     await refresh();
   }

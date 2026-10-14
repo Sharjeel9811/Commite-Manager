@@ -104,17 +104,16 @@ class SqlitePaymentRepository implements PaymentRepository {
       _appDatabase.guardAsync('Could not set up the payment schedule.', () async {
         if (payments.isEmpty) return;
         final DatabaseExecutor db = await _appDatabase.executor;
-        final Batch batch = db.batch();
+        // Use individual inserts instead of batch() — batch() is not supported
+        // on a Transaction executor in sqflite, causing silent failures when
+        // called inside the outer committee-creation transaction.
         for (final Payment payment in payments) {
-          // `ignore` makes generation idempotent: re-running the generator can
-          // never create a duplicate or crash the app.
-          batch.insert(
+          await db.insert(
             DbSchema.payments,
             payment.toMap(),
             conflictAlgorithm: ConflictAlgorithm.ignore,
           );
         }
-        await batch.commit(noResult: true);
         _log.info('Generated ${payments.length} payment rows');
       });
 
@@ -174,11 +173,18 @@ class SqlitePaymentRepository implements PaymentRepository {
             'proof_path': null,
             'updated_at': DateTime.now().millisecondsSinceEpoch,
           },
-          where: 'id = ?',
-          whereArgs: <Object?>[paymentId],
+          where: 'id = ? AND status = ?',
+          whereArgs: <Object?>[paymentId, 'paid'],
         );
-        if (rows == 0) throw const NotFoundException('This payment record no longer exists.');
+        if (rows == 0) {
+          throw const BusinessRuleException(
+            'This payment is already marked as pending.',
+          );
+        }
       });
+
+  @override
+  Future<int> countPaidRows(String committeeId) => countPaid(committeeId);
 
   @override
   Future<void> deleteById(String id) =>

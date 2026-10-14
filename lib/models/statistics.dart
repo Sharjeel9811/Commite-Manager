@@ -179,6 +179,7 @@ class PeriodCollection {
     required this.turnStatus,
     this.isClosed = false,
     this.completedAt,
+    this.proofPaths = const <String>[],
   });
 
   final String committeeId;
@@ -195,6 +196,7 @@ class PeriodCollection {
   final String turnStatus;
   final bool isClosed;
   final DateTime? completedAt;
+  final List<String> proofPaths;
 
   int get pendingCount => (totalCount - paidCount).clamp(0, totalCount);
 

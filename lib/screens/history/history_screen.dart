@@ -1,3 +1,5 @@
+import 'dart:io';
+
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
@@ -43,7 +45,8 @@ class HistoryScreen extends StatelessWidget {
   }
 
   Widget _body(BuildContext context, HistoryProvider history, ThemeData theme) {
-    if (history.state.isLoading && history.all.isEmpty) return const LoadingState();
+    if (history.state.isLoading && history.all.isEmpty)
+      return const LoadingState();
     if (history.state.hasError && history.all.isEmpty) {
       return ErrorState(message: history.state.error!, onRetry: history.load);
     }
@@ -94,7 +97,8 @@ class HistoryScreen extends StatelessWidget {
             ),
           ),
           const SizedBox(height: AppSpacing.xl),
-          for (final MapEntry<String, List<PeriodCollection>> entry in grouped.entries) ...<Widget>[
+          for (final MapEntry<String, List<PeriodCollection>> entry
+              in grouped.entries) ...<Widget>[
             SectionLabel(entry.key),
             const SizedBox(height: AppSpacing.md),
             for (final PeriodCollection period in entry.value)
@@ -118,7 +122,10 @@ class _FilterRow extends StatelessWidget {
       height: 48,
       child: ListView(
         scrollDirection: Axis.horizontal,
-        padding: const EdgeInsets.symmetric(horizontal: AppSpacing.page, vertical: AppSpacing.sm),
+        padding: const EdgeInsets.symmetric(
+          horizontal: AppSpacing.page,
+          vertical: AppSpacing.sm,
+        ),
         children: <Widget>[
           Padding(
             padding: const EdgeInsets.only(right: AppSpacing.sm),
@@ -151,14 +158,19 @@ class _HistoryTile extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final Color accent = period.isComplete ? AppColors.success : AppColors.neutral;
+    final Color accent = period.isComplete
+        ? AppColors.success
+        : AppColors.neutral;
+    final ColorScheme scheme = theme.colorScheme;
 
     return AppCard(
       margin: const EdgeInsets.only(bottom: AppSpacing.sm),
       child: Row(
         children: <Widget>[
           AppIconBadge(
-            icon: period.isComplete ? Icons.check_rounded : Icons.timelapse_rounded,
+            icon: period.isComplete
+                ? Icons.check_rounded
+                : Icons.timelapse_rounded,
             background: accent.withValues(alpha: 0.12),
             foreground: accent,
           ),
@@ -167,12 +179,19 @@ class _HistoryTile extends StatelessWidget {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: <Widget>[
-                Text(period.label, style: theme.textTheme.titleSmall),
+                Text(
+                  period.label,
+                  style: theme.textTheme.titleSmall?.copyWith(
+                    color: scheme.onSurface,
+                  ),
+                ),
                 const SizedBox(height: 2),
                 Text(
                   'Due ${AppDateUtils.formatDayMonthYear(period.dueDate)}'
                   '${period.completedAt != null ? ' • handed over ${AppDateUtils.formatDayMonth(period.completedAt!)}' : ''}',
-                  style: theme.textTheme.bodySmall,
+                  style: theme.textTheme.bodySmall?.copyWith(
+                    color: scheme.onSurfaceVariant,
+                  ),
                 ),
                 if (period.recipientName != null) ...<Widget>[
                   const SizedBox(height: AppSpacing.xs),
@@ -193,10 +212,74 @@ class _HistoryTile extends StatelessWidget {
                 style: theme.textTheme.titleSmall?.copyWith(color: accent),
               ),
               const SizedBox(height: 2),
-              Text('${period.paidCount}/${period.totalCount}', style: theme.textTheme.bodySmall),
+              Text(
+                '${period.paidCount}/${period.totalCount}',
+                style: theme.textTheme.bodySmall?.copyWith(
+                  color: scheme.onSurfaceVariant,
+                ),
+              ),
+              if (period.proofPaths.isNotEmpty)
+                TextButton.icon(
+                  onPressed: () => _showProofs(context, period.proofPaths),
+                  icon: const Icon(Icons.receipt_long_rounded, size: 16),
+                  label: Text('Proofs (${period.proofPaths.length})'),
+                  style: TextButton.styleFrom(
+                    padding: EdgeInsets.zero,
+                    minimumSize: const Size(0, 28),
+                    tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                  ),
+                ),
             ],
           ),
         ],
+      ),
+    );
+  }
+
+  void _showProofs(BuildContext context, List<String> paths) {
+    showDialog<void>(
+      context: context,
+      builder: (BuildContext dialogContext) => Dialog(
+        child: SizedBox(
+          width: 420,
+          height: 520,
+          child: GridView.builder(
+            padding: const EdgeInsets.all(AppSpacing.md),
+            gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+              crossAxisCount: 2,
+              crossAxisSpacing: AppSpacing.sm,
+              mainAxisSpacing: AppSpacing.sm,
+            ),
+            itemCount: paths.length,
+            itemBuilder: (BuildContext context, int index) => InkWell(
+              onTap: () => _showProof(context, paths[index]),
+              child: Image.file(
+                File(paths[index]),
+                fit: BoxFit.cover,
+                errorBuilder: (_, _, _) => const Center(
+                  child: Icon(Icons.broken_image_outlined),
+                ),
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
+  void _showProof(BuildContext context, String path) {
+    showDialog<void>(
+      context: context,
+      builder: (BuildContext dialogContext) => Dialog(
+        child: InteractiveViewer(
+          child: Image.file(
+            File(path),
+            errorBuilder: (_, _, _) => const Padding(
+              padding: EdgeInsets.all(24),
+              child: Text('Payment proof is no longer available on this device.'),
+            ),
+          ),
+        ),
       ),
     );
   }

@@ -50,7 +50,10 @@ class Payment {
 
   /// "Overdue" is never stored — it is always derived from the due date, so it
   /// can never go stale if the clock or the due date changes.
-  bool get isOverdue => !isPaid && AppDateUtils.isPast(dueDate);
+  bool get isOverdue => isOverdueAt();
+
+  bool isOverdueAt({DateTime? now}) =>
+      !isPaid && AppDateUtils.dateOnly(now ?? DateTime.now()).isAfter(AppDateUtils.dateOnly(dueDate));
 
   bool get isDueToday => !isPaid && AppDateUtils.isToday(dueDate);
 
@@ -59,7 +62,10 @@ class Payment {
   int get daysUntilDue => AppDateUtils.daysBetween(DateTime.now(), dueDate);
 
   /// Days the payment is late, never negative for a not-yet-due row.
-  int get daysOverdue => isPaid ? 0 : AppDateUtils.daysLate(dueDate);
+  int get daysOverdue => daysOverdueAt();
+
+  int daysOverdueAt({DateTime? now}) =>
+      isPaid || !isOverdueAt(now: now) ? 0 : AppDateUtils.daysLate(dueDate, asOf: now);
 
   /// Unpaid and inside the shared due-soon window (today through today+N).
   bool get isDueSoon => !isPaid && AppDateUtils.isDueSoon(dueDate);
@@ -67,8 +73,11 @@ class Payment {
   /// Late long enough to deserve escalation past plain "overdue" (see
   /// [AppConstants.severelyOverdueDays]). Drives the stronger row colour and
   /// lets a busy collector see at a glance which debts need chasing first.
-  bool get isSeverelyOverdue =>
-      !isPaid && daysOverdue >= AppConstants.severelyOverdueDays;
+  bool get isSeverelyOverdue => isSeverelyOverdueAt();
+
+  bool isSeverelyOverdueAt({DateTime? now}) =>
+      isOverdueAt(now: now) &&
+      daysOverdueAt(now: now) >= AppConstants.severelyOverdueDays;
 
   /// The most serious overdue label for a chip: "Overdue" for a fresh debt,
   /// "Overdue 12 days" for one that is getting old, and

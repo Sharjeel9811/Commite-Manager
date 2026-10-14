@@ -14,7 +14,7 @@ class AppConstants {
   // --------------------------------------------------------------- Database
   static const String databaseName = 'committee_manager.db';
   static const String databaseDirectoryName = 'committee_manager';
-  static const int databaseVersion = 3;
+  static const int databaseVersion = 5;
 
   // ------------------------------------------------------------------- Auth
   static const int minPinLength = 4;

@@ -27,7 +27,7 @@ A **Bachat Committee** (also called a rotating savings group, chit fund, or ROSC
 works like this:
 
 - A fixed group of members each contributes a fixed amount every period (weekly / monthly etc.)
-- After every member has paid, the entire collected pool is handed to **one member** — their "turn"
+- After the other members have paid, the entire collected pool is handed to **one member** — their "turn"
 - The next period the same thing happens, but a different member gets the pool
 - This continues until every single member has received the pool once
 - The committee then ends
@@ -154,10 +154,12 @@ committee runs for 14 consecutive collection days.
 
 ## 7. How Overdue is Calculated
 
-**Overdue is never stored** — it is always derived at runtime from the due date:
+**Overdue is never stored** — it is always derived at runtime from date-only values:
 
 ```dart
-bool get isOverdue => !isPaid && dueDate.isBefore(DateTime.now())
+bool isOverdueAt(DateTime now) =>
+    !isPaid && DateTime(now.year, now.month, now.day)
+      .isAfter(DateTime(dueDate.year, dueDate.month, dueDate.day));
 ```
 
 This means:
@@ -165,7 +167,8 @@ This means:
 - A payment due tomorrow and still unpaid → **pending** (not overdue)
 - A payment that was paid late → shows when it was paid, no longer overdue
 
-**Severely overdue** = overdue by more than `AppConstants.severelyOverdueDays` (30 days).
+**Severely overdue** uses the same date-only comparison and is reached after
+`AppConstants.severelyOverdueDays` (30 days).
 These are shown with a stronger red colour in the UI.
 
 ---
@@ -193,33 +196,28 @@ The app creates committees directly as **ACTIVE** (not Draft) because:
 
 ### Payment proof for online payments
 
-When a payment is recorded through an online wallet or bank channel, the app asks
-the user to choose a screenshot from the device gallery. The payment is not
-recorded if the picker is cancelled, so an online payment cannot be saved without
-its proof. Cash, cheque, and other offline methods continue through the existing
-one-tap flow without a screenshot.
-
-The selected image path is stored with the payment row as `proof_path`. Undoing a
-payment clears the method and proof together, allowing the payment to be recorded
-again correctly. The image remains on the device; the database stores only its
-path and does not upload it to a remote service.
+Online and bank payments are recorded using the selected payment method without
+opening the gallery or asking the user for a screenshot. The legacy `proof_path`
+column remains nullable for database compatibility and is not required by the
+current payment workflow.
 
 ### Rule 1 — Collecting member does not pay their own period
 The member whose turn it is to collect **does not contribute** to that period's pot.
 They receive the contributions of all other members.
 
-**Why:** It would be circular — paying into your own pot means you collect back
-exactly what you put in, adding zero value to anyone.
+This is a deliberate collector-exempt ROSCA variant: `pot = C × (N − 1)`.
+The common alternative is `pot = C × N`, where the collector also contributes.
 
 ### Rule 2 — Duration always equals member count
 A 5-member committee runs for exactly 5 periods so every member gets exactly one turn.
 
-### Rule 3 — Roster locks after first payment
-Once any payment is recorded, the collection order cannot be changed. Changing the
+### Rule 3 — Roster locks after the first payment is marked paid
+Once any payment is marked paid, the collection order cannot be changed. Changing the
 order after payments exist would mean the person who collected period 1's pot
 retroactively "should have" been someone else.
 
-**Code location:** `CommitteeDetailProvider.canEditRoster`
+This is enforced by both `CommitteeDetailProvider` and `MemberService`; generated
+rows always exist, so row existence is not evidence that money moved.
 ```dart
 bool get canEditRoster => committee.isEditable && !_hasPaidPayments;
 ```
@@ -228,15 +226,17 @@ bool get canEditRoster => committee.isEditable && !_hasPaidPayments;
 When all payments in a period are marked paid, the next member's turn becomes active
 automatically. The organiser does not need to manually advance the turn.
 
-### Rule 5 — Undoing a payment re-opens a completed turn
-If a completed period is reopened by marking a payment as unpaid, the turn
-reverts from `completed` back to `upcoming`, the period becomes open again,
-and the committee's `completedTurns` counter decrements. Everything stays consistent.
+### Rule 5 — Turn and committee states are recomputed
+On every reconcile, a turn is completed exactly when all `N − 1` payment rows in
+its period are marked paid. The earliest non-completed turn is the only `active`
+turn; every other non-completed turn is `upcoming`. Completed turns are recounted.
+If a payment is unmarked, the turn reopens, and a completed committee returns to
+`active`. The committee is `completed` only when every turn is completed.
 
-### Rule 6 — Amount cannot change after payments are recorded
-The contribution amount can only be changed while zero payments have been made.
-After any payment exists, the amount is locked because historical records already
-used it.
+### Rule 6 — Amount cannot change after payments are marked paid
+The contribution amount can only be changed while zero payments are marked paid.
+After any payment is marked paid, the amount is locked because historical records
+already used it.
 
 ---
 
@@ -245,13 +245,17 @@ used it.
 | Situation | What happens |
 |---|---|
 | 2-member committee | Pot = contribution × 1 = contribution amount. Member A pays once, gets the pot; Member B pays once, gets the pot. Total each pays = 1×contribution = exactly what they receive. |
-| Mark payment paid twice | Rejected with `DuplicateException` — the database has a UNIQUE constraint on (committeeId, memberId, periodNumber). |
+| Mark payment paid twice | Rejected with `DuplicateException`; the conditional update prevents concurrent double taps. |
 | Delete committee mid-run | All members, payments, turns and periods are deleted via `ON DELETE CASCADE`. No orphaned rows. |
 | App killed during payment | SQLite transaction rolls back completely. Either the payment is recorded AND the turn reconciled, or neither happens. |
-| Schedule missing at startup | `ScheduleService.ensureFor()` runs at launch and repairs any committee whose period/turn count doesn't match the committee definition. |
-| Period count mismatch after roster change | Rebuild path: `clearRows()` wipes all generated rows then `generateRowsFor()` regenerates them with the new member list. |
-| Committee with 0 unpaid periods | `currentPeriod` falls back to `lastDueDate` — the committee is done. |
-| All committees have 0 members | Dashboard shows zeroes gracefully. |
+| Schedule missing at startup | `ScheduleService.ensureFor()` repairs only committees with zero paid rows. A mismatch with paid history is surfaced and no rows are deleted. |
+| Period count mismatch after roster change | Rebuild is allowed only with zero paid rows; `clearRows()` refuses to delete paid history. |
+| One-member committee | Rejected by the wizard/service and the database schema; a zero-row period is never completed. |
+| Unmark unpaid row | Rejected as a no-op with a business-rule error. |
+
+Early collectors receive money before paying all of their own later contributions:
+this is an interest-free advance. The app does not alter that ROSCA behavior; it
+only flags late obligations through overdue status.
 
 ---
 

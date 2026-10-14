@@ -127,11 +127,13 @@ class SqliteMemberRepository implements MemberRepository {
       _appDatabase.guardAsync('Could not add the members.', () async {
         if (members.isEmpty) return;
         final DatabaseExecutor db = await _appDatabase.executor;
-        final Batch batch = db.batch();
         for (final Member member in members) {
-          batch.insert(DbSchema.members, member.toMap());
+          await db.insert(
+            DbSchema.members,
+            member.toMap(),
+            conflictAlgorithm: ConflictAlgorithm.replace,
+          );
         }
-        await batch.commit(noResult: true);
         _log.info('Inserted ${members.length} members');
       });
 

@@ -1,3 +1,5 @@
+import 'dart:typed_data';
+
 import 'package:intl/intl.dart';
 import 'package:pdf/pdf.dart';
 import 'package:pdf/widgets.dart' as pw;
@@ -21,8 +23,19 @@ class ReportService {
 
   /// Builds the PDF and immediately opens the OS share sheet / print dialog.
   Future<void> generateAndShare({required CommitteeBundle bundle}) async {
+    await Printing.sharePdf(
+      bytes: await buildPdfBytes(bundle: bundle),
+      filename: reportFilename,
+    );
+  }
+
+  /// Builds a complete report without invoking the platform share sheet.
+  ///
+  /// Keeping document generation separate makes failures deterministic and
+  /// allows callers/tests to verify large committees before sharing.
+  Future<Uint8List> buildPdfBytes({required CommitteeBundle bundle}) async {
     final pw.Document pdf = await _buildPdf(bundle);
-    await Printing.sharePdf(bytes: await pdf.save(), filename: reportFilename);
+    return pdf.save();
   }
 
   // â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ PDF layout
@@ -55,7 +68,7 @@ class ReportService {
       pw.MultiPage(
         theme: theme,
         pageFormat: PdfPageFormat.a4,
-        maxPages: 100,
+        maxPages: 500,
         margin: const pw.EdgeInsets.all(32),
         header: (pw.Context ctx) => _header(ctx, c),
         footer: (pw.Context ctx) => _footer(ctx),
@@ -73,7 +86,7 @@ class ReportService {
           pw.SizedBox(height: 20),
           _periodsSection(bundle),
           pw.SizedBox(height: 20),
-          _paymentDetailsSection(bundle),
+          ..._paymentDetailsSections(bundle),
         ],
       ),
     );
@@ -378,27 +391,51 @@ class ReportService {
     );
   }
 
-  pw.Widget _paymentDetailsSection(CommitteeBundle bundle) {
+  List<pw.Widget> _paymentDetailsSections(CommitteeBundle bundle) {
     final List<Payment> paid =
         bundle.payments.where((Payment p) => p.isPaid).toList()..sort(
           (Payment a, Payment b) =>
               (b.paidDate ?? b.dueDate).compareTo(a.paidDate ?? a.dueDate),
         );
 
-    if (paid.isEmpty) return pw.SizedBox();
+    if (paid.isEmpty) return <pw.Widget>[];
 
     // Map memberId â†’ name for quick lookup
     final Map<String, String> memberNames = <String, String>{
       for (final Member m in bundle.members) m.id: m.name,
     };
 
-    return pw.Column(
-      crossAxisAlignment: pw.CrossAxisAlignment.start,
-      children: <pw.Widget>[
-        _sectionTitle('Payment History'),
-        pw.SizedBox(height: 8),
+    final List<List<String>> rows = paid
+        .map((Payment p) {
+          return <String>[
+            memberNames[p.memberId] ?? '-',
+            'P${p.periodNumber}',
+            'Rs ${_money(p.amount)}',
+            _methodLabel(p.method?.name),
+            p.paidDate != null ? _fmt(p.paidDate!) : '-',
+          ];
+        })
+        .toList(growable: false);
+
+    // Keep each table bounded. A single very large table can repeatedly
+    // re-layout at a page boundary in pdf's MultiPage engine and eventually
+    // throw TooManyPagesException for otherwise valid committees.
+    const int rowsPerTable = 40;
+    final List<pw.Widget> sections = <pw.Widget>[
+      _sectionTitle('Payment History'),
+      pw.SizedBox(height: 8),
+    ];
+    for (int start = 0; start < rows.length; start += rowsPerTable) {
+      final int end = (start + rowsPerTable).clamp(0, rows.length);
+      sections.add(
         pw.TableHelper.fromTextArray(
-          headers: <String>['Member', 'Period', 'Amount', 'Method', 'Paid On'],
+          headers: const <String>[
+            'Member',
+            'Period',
+            'Amount',
+            'Method',
+            'Paid On',
+          ],
           headerStyle: pw.TextStyle(
             fontWeight: pw.FontWeight.bold,
             color: PdfColors.white,
@@ -408,18 +445,13 @@ class ReportService {
           cellStyle: pw.TextStyle(fontSize: 8),
           cellAlignments: <int, pw.Alignment>{2: pw.Alignment.centerRight},
           oddRowDecoration: const pw.BoxDecoration(color: PdfColors.grey100),
-          data: paid.take(200).map((Payment p) {
-            return <String>[
-              memberNames[p.memberId] ?? '-',
-              'P${p.periodNumber}',
-              'Rs ${_money(p.amount)}',
-              _methodLabel(p.method?.name),
-              p.paidDate != null ? _fmt(p.paidDate!) : '-',
-            ];
-          }).toList(),
+          data: rows.sublist(start, end),
         ),
-      ],
-    );
+      );
+      if (end < rows.length) sections.add(pw.SizedBox(height: 10));
+    }
+
+    return sections;
   }
 
   // â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ Helpers

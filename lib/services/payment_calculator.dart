@@ -25,7 +25,8 @@ class PaymentCalculator {
   /// The member who collects a period's pot does **not** pay into it — the pot
   /// is made of the other `memberCount - 1` members' contributions.
   double poolPerTurn(Committee committee) =>
-      committee.contributionAmount * (committee.memberCount <= 1 ? 0 : committee.memberCount - 1);
+      committee.contributionAmount *
+      (committee.memberCount <= 1 ? 0 : committee.memberCount - 1);
 
   /// Money collected in a single period: everyone who paid.
   double collectedInPeriod(List<Payment> payments) => payments
@@ -46,12 +47,14 @@ class PaymentCalculator {
 
   // ------------------------------------------------------------- Count basics
 
-  int paidCount(List<Payment> payments) => payments.where((Payment p) => p.isPaid).length;
+  int paidCount(List<Payment> payments) =>
+      payments.where((Payment p) => p.isPaid).length;
 
-  int pendingCount(List<Payment> payments) => payments.where((Payment p) => !p.isPaid).length;
+  int pendingCount(List<Payment> payments) =>
+      payments.where((Payment p) => !p.isPaid).length;
 
   int overdueCount(List<Payment> payments, {DateTime? asOf}) =>
-      payments.where((Payment p) => p.isOverdue).length;
+      payments.where((Payment p) => p.isOverdueAt(now: asOf)).length;
 
   /// 0.0 - 100.0 of the payments in the given list that are settled.
   double completionPercent(List<Payment> payments) {
@@ -72,7 +75,9 @@ class PaymentCalculator {
       case PaymentFilter.pending:
         return payments.where((Payment p) => !p.isPaid).toList(growable: false);
       case PaymentFilter.overdue:
-        return payments.where((Payment p) => p.isOverdue).toList(growable: false);
+        return payments
+            .where((Payment p) => p.isOverdue)
+            .toList(growable: false);
     }
   }
 
@@ -82,7 +87,10 @@ class PaymentCalculator {
   ///
   /// The order comes from `members.turn_number`, which the database guarantees
   /// is unique inside a committee. Turn *N* is funded by period *N*.
-  List<CommitteeTurn> buildTurns({required Committee committee, required List<Member> members}) {
+  List<CommitteeTurn> buildTurns({
+    required Committee committee,
+    required List<Member> members,
+  }) {
     final List<Member> ordered = List<Member>.of(members)
       ..sort((Member a, Member b) => a.turnNumber.compareTo(b.turnNumber));
     final DateTime now = DateTime.now();
@@ -118,10 +126,16 @@ class PaymentCalculator {
   List<PaymentSchedule> buildSchedule(Committee committee) {
     final List<PaymentSchedule> schedules = <PaymentSchedule>[];
     for (int period = 1; period <= committee.durationPeriods; period++) {
-      final DateTime due = committee.frequency.dueDateForPeriod(period, committee.startDate);
+      final DateTime due = committee.frequency.dueDateForPeriod(
+        period,
+        committee.startDate,
+      );
       final DateTime previous = period == 1
           ? committee.startDate
-          : committee.frequency.dueDateForPeriod(period - 1, committee.startDate);
+          : committee.frequency.dueDateForPeriod(
+              period - 1,
+              committee.startDate,
+            );
       schedules.add(
         PaymentSchedule(
           id: '${committee.id}_period_$period',
@@ -154,7 +168,8 @@ class PaymentCalculator {
     // equals the period number — and that member does not pay into it.
     final Set<int> recipients = <int>{
       for (final Member member in members)
-        if (member.turnNumber >= 1 && member.turnNumber <= committee.durationPeriods)
+        if (member.turnNumber >= 1 &&
+            member.turnNumber <= committee.durationPeriods)
           member.turnNumber,
     };
     final DateTime now = DateTime.now();
@@ -165,7 +180,8 @@ class PaymentCalculator {
       final bool isRecipientPeriod = recipients.contains(schedule.periodNumber);
       for (final Member member in members) {
         // The member receiving this period's pot does not pay into it.
-        if (isRecipientPeriod && member.turnNumber == schedule.periodNumber) continue;
+        if (isRecipientPeriod && member.turnNumber == schedule.periodNumber)
+          continue;
         payments.add(
           Payment(
             id: '${committee.id}_${schedule.periodNumber}_${member.id}',
@@ -196,7 +212,10 @@ class PaymentCalculator {
   }) {
     final DateTime asOf = now ?? DateTime.now();
 
-    final int currentTurnIndex = committee.currentTurn.clamp(1, committee.durationPeriods);
+    final int currentTurnIndex = committee.currentTurn.clamp(
+      1,
+      committee.durationPeriods,
+    );
     final CommitteeTurn? currentTurn = _turnByNumber(turns, currentTurnIndex);
     final CommitteeTurn? nextTurn = _turnByNumber(turns, currentTurnIndex + 1);
 
@@ -211,7 +230,9 @@ class PaymentCalculator {
       paidCount: paidCount(payments),
       pendingCount: pendingCount(payments),
       overdueCount: payments
-          .where((Payment p) => !p.isPaid && p.dueDate.isBefore(_startOfDay(asOf)))
+          .where(
+            (Payment p) => !p.isPaid && p.dueDate.isBefore(_startOfDay(asOf)),
+          )
           .length,
       completedTurns: turns.where((CommitteeTurn t) => t.isCompleted).length,
       totalTurns: committee.durationPeriods,
@@ -221,8 +242,12 @@ class PaymentCalculator {
       currentPeriod: currentTurnIndex,
       totalPeriods: committee.durationPeriods,
       expectedPeriod: currentPeriodFor(committee, asOf),
-      currentRecipientName: currentTurn == null ? null : _nameOf(members, currentTurn.memberId),
-      nextRecipientName: nextTurn == null ? null : _nameOf(members, nextTurn.memberId),
+      currentRecipientName: currentTurn == null
+          ? null
+          : _nameOf(members, currentTurn.memberId),
+      nextRecipientName: nextTurn == null
+          ? null
+          : _nameOf(members, nextTurn.memberId),
       nextDueDate:
           currentTurn?.dueDate ??
           committee.frequency.dueDateForPeriod(
@@ -240,7 +265,10 @@ class PaymentCalculator {
     final DateTime today = _startOfDay(now);
     int current = 1;
     for (int period = 1; period <= committee.durationPeriods; period++) {
-      final DateTime due = committee.frequency.dueDateForPeriod(period, committee.startDate);
+      final DateTime due = committee.frequency.dueDateForPeriod(
+        period,
+        committee.startDate,
+      );
       if (!due.isBefore(today)) return period;
       current = period;
     }
@@ -282,7 +310,9 @@ class PaymentCalculator {
   }) {
     final Map<int, List<Payment>> byPeriod = <int, List<Payment>>{};
     for (final Payment payment in payments) {
-      byPeriod.putIfAbsent(payment.periodNumber, () => <Payment>[]).add(payment);
+      byPeriod
+          .putIfAbsent(payment.periodNumber, () => <Payment>[])
+          .add(payment);
     }
 
     final List<PeriodCollection> history = <PeriodCollection>[];
@@ -307,6 +337,10 @@ class PaymentCalculator {
           turnStatus: (turn?.status ?? TurnStatus.upcoming).name,
           isClosed: turn?.isCompleted ?? false,
           completedAt: turn?.completedAt,
+          proofPaths: rows
+              .where((Payment payment) => payment.proofPath != null)
+              .map((Payment payment) => payment.proofPath!)
+              .toList(growable: false),
         ),
       );
     }
@@ -341,5 +375,6 @@ class PaymentCalculator {
     return null;
   }
 
-  static DateTime _startOfDay(DateTime value) => DateTime(value.year, value.month, value.day);
+  static DateTime _startOfDay(DateTime value) =>
+      DateTime(value.year, value.month, value.day);
 }

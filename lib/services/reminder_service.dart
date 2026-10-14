@@ -1,15 +1,12 @@
-import '../core/utils/app_date_utils.dart';
 import '../core/utils/currency_formatter.dart';
 import '../core/utils/logger.dart';
 import '../models/committee.dart';
-import '../models/committee_turn.dart';
 import '../models/enums.dart';
 import '../models/notification_payload.dart';
 import '../models/payment.dart';
 import '../models/payment_schedule.dart';
 import '../repositories/interfaces/committee_repository.dart';
 import '../repositories/interfaces/payment_repository.dart';
-import '../repositories/interfaces/turn_repository.dart';
 import 'interfaces/notification_service.dart';
 import 'payment_calculator.dart';
 
@@ -21,18 +18,15 @@ class ReminderService {
     required NotificationService notificationService,
     required CommitteeRepository committeeRepository,
     required PaymentRepository paymentRepository,
-    required TurnRepository turnRepository,
     required PaymentCalculator calculator,
   }) : _notifications = notificationService,
        _committees = committeeRepository,
        _payments = paymentRepository,
-       _turns = turnRepository,
        _calculator = calculator;
 
   final NotificationService _notifications;
   final CommitteeRepository _committees;
   final PaymentRepository _payments;
-  final TurnRepository _turns;
   final PaymentCalculator _calculator;
 
   static const AppLogger _log = AppLogger('ReminderService');
@@ -68,11 +62,10 @@ class ReminderService {
     }
   }
 
-  /// Builds the reminders for one committee:
-  ///  * the day before a due date,
-  ///  * on the due date itself,
-  ///  * the day after, if money is still missing (overdue),
-  ///  * a few days before the next recipient's turn.
+  /// Builds one reminder for the earliest period that still has unpaid money.
+  ///
+  /// Limiting this to the next actionable period prevents a four-member
+  /// committee from creating four future notifications at once.
   Future<void> scheduleForCommittee(
     Committee committee, {
     int reminderHour = 9,
@@ -81,9 +74,6 @@ class ReminderService {
 
     final List<Payment> payments = await _payments.getByCommittee(committee.id);
     final List<PaymentSchedule> periods = await _scheduleOf(committee);
-    final List<CommitteeTurn> turns = await _turns.getByCommittee(committee.id);
-
-    int scheduled = 0;
     for (final PaymentSchedule period in periods) {
       if (period.isClosed) continue;
 
@@ -96,92 +86,33 @@ class ReminderService {
       final double outstanding = _calculator.pendingInPeriod(inPeriod);
       final String periodLabel = period.label;
 
-      // 1 day before
-      final DateTime dayBefore = _atHour(
-        AppDateUtils.addDays(period.dueDate, -1),
-        reminderHour,
-      );
-      await _notifications.schedule(
-        AppNotification(
-          id: _paymentId('pre', committee.id, period.periodNumber),
-          type: AppNotificationType.paymentUpcoming,
-          title: 'Payment due tomorrow',
-          body:
-              '${committee.name} • $periodLabel: ${_currency(outstanding)} '
-              'pending from $pending member${pending == 1 ? '' : 's'}.',
-          payload: 'committee:${committee.id}',
-        ),
-        dayBefore,
-      );
-
-      // On the day
-      final DateTime dueDay = _atHour(period.dueDate, reminderHour);
+      // One reminder per open period prevents the pre-due, due, overdue, and
+      // turn reminders from appearing as duplicate notifications for one item.
+      DateTime dueDay = _atHour(period.dueDate, reminderHour);
+      // A reschedule happens after every payment write. Scheduling an already
+      // elapsed due date as "now" would show the same reminder again after
+      // each write, which looks like duplicate notifications to the user.
+      if (dueDay.isBefore(DateTime.now())) {
+        final DateTime tomorrow = DateTime.now().add(const Duration(days: 1));
+        dueDay = _atHour(tomorrow, reminderHour);
+      }
       await _notifications.schedule(
         AppNotification(
           id: _paymentId('due', committee.id, period.periodNumber),
-          type: AppNotificationType.paymentDueToday,
-          title: 'Payment due today',
+          type: AppNotificationType.paymentUpcoming,
+          title: 'Payment reminder',
           body:
-              '${committee.name} • $periodLabel: collect ${_currency(outstanding)} '
+              '${committee.name} • $periodLabel: ${_currency(outstanding)} '
               'from $pending member${pending == 1 ? '' : 's'}.',
           payload: 'committee:${committee.id}',
         ),
         dueDay,
       );
-
-      // Overdue follow-up
-      final DateTime overdueDay = _atHour(
-        AppDateUtils.addDays(period.dueDate, 1),
-        reminderHour,
-      );
-      await _notifications.schedule(
-        AppNotification(
-          id: _paymentId('over', committee.id, period.periodNumber),
-          type: AppNotificationType.paymentOverdue,
-          title: 'Payment overdue',
-          body:
-              '${committee.name} • $periodLabel: ${_currency(outstanding)} '
-              'still outstanding from $pending member${pending == 1 ? '' : 's'}.',
-          payload: 'committee:${committee.id}',
-        ),
-        overdueDay,
-      );
-      scheduled += 3;
+      _log.info('${committee.name}: 1 reminder scheduled');
+      return;
     }
 
-    // Upcoming turn
-    for (final CommitteeTurn turn in turns) {
-      if (turn.isCompleted) continue;
-      if (turn.status == TurnStatus.upcoming &&
-          turn.turnNumber > committee.currentTurn + 1) {
-        continue; // only remind about the immediate next turn
-      }
-      final DateTime remindOn = _atHour(
-        AppDateUtils.addDays(turn.dueDate, -3),
-        reminderHour,
-      );
-      final bool isMyTurn = turn.turnNumber == committee.currentTurn;
-      await _notifications.schedule(
-        AppNotification(
-          id: _turnId(committee.id, turn.turnNumber),
-          type: isMyTurn
-              ? AppNotificationType.myTurn
-              : AppNotificationType.turnUpcoming,
-          title: isMyTurn
-              ? 'Your committee turn is coming up'
-              : 'Next committee turn',
-          body:
-              '${committee.name}: turn ${turn.turnNumber} is due on '
-              '${AppDateUtils.formatCompact(turn.dueDate)} — pool ${_currency(turn.expectedAmount)}.',
-          payload: 'committee:${committee.id}',
-        ),
-        remindOn,
-      );
-      scheduled++;
-      break; // one upcoming-turn reminder per committee is enough
-    }
-
-    _log.info('${committee.name}: $scheduled reminder(s) scheduled');
+    _log.info('${committee.name}: no unpaid period reminder needed');
   }
 
   Future<List<PaymentSchedule>> _scheduleOf(Committee committee) async {
@@ -197,9 +128,6 @@ class ReminderService {
 
   int _paymentId(String prefix, String committeeId, int period) =>
       LocalNotificationId.forKey('$prefix:$committeeId:$period');
-
-  int _turnId(String committeeId, int turn) =>
-      LocalNotificationId.forKey('turn:$committeeId:$turn');
 }
 
 /// Deterministic notification ids, kept in the domain layer so both the

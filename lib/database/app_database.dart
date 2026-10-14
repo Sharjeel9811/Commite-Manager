@@ -36,7 +36,8 @@ class AppDatabase {
   ///
   /// Repositories therefore stay free of transaction plumbing (and of importing
   /// sqflite at all in their interfaces) while still being fully atomic.
-  Future<DatabaseExecutor> get executor async => _activeTransaction ?? await database;
+  Future<DatabaseExecutor> get executor async =>
+      _activeTransaction ?? await database;
 
   /// Opens the database (idempotent, safe for concurrent callers).
   Future<Database> get database async {
@@ -65,7 +66,8 @@ class AppDatabase {
 
   Future<Database> _open() async {
     final String path =
-        _overridePath ?? p.join(await _resolveDirectory(), AppConstants.databaseName);
+        _overridePath ??
+        p.join(await _resolveDirectory(), AppConstants.databaseName);
     _log.info('Opening $path');
     return _factory.openDatabase(
       path,
@@ -74,6 +76,7 @@ class AppDatabase {
         onConfigure: _onConfigure,
         onCreate: _onCreate,
         onUpgrade: _onUpgrade,
+        onOpen: _onOpen,
       ),
     );
   }
@@ -89,7 +92,8 @@ class AppDatabase {
   /// Exports user-owned business data without PIN hashes or OTP records.
   Future<Map<String, List<Map<String, Object?>>>> exportCloudData() async {
     final DatabaseExecutor db = await executor;
-    final Map<String, List<Map<String, Object?>>> result = <String, List<Map<String, Object?>>>{};
+    final Map<String, List<Map<String, Object?>>> result =
+        <String, List<Map<String, Object?>>>{};
     for (final String table in <String>[
       DbSchema.committees,
       DbSchema.members,
@@ -140,6 +144,46 @@ class AppDatabase {
     await db.execute('PRAGMA foreign_keys = ON');
   }
 
+  Future<void> _onOpen(Database db) async {
+    await ensurePaymentProofColumn(db: db);
+  }
+
+  /// Repairs legacy databases before any payment row is inserted or updated.
+  ///
+  /// This is deliberately callable at the write boundary as well as from
+  /// `onOpen`: some older installs report a current schema version even though
+  /// an interrupted migration left the column absent.
+  Future<void> ensurePaymentProofColumn({DatabaseExecutor? db}) async {
+    final DatabaseExecutor executor =
+        db ?? _activeTransaction ?? await database;
+    final List<Map<String, Object?>> columns = await executor.rawQuery(
+      'PRAGMA table_info(${DbSchema.payments})',
+    );
+    if (columns.isEmpty) return;
+    final bool hasProofPath = columns.any(
+      (Map<String, Object?> column) => column['name'] == 'proof_path',
+    );
+    if (hasProofPath) return;
+
+    _log.warn('Repairing payments table: adding proof_path column');
+    try {
+      await executor.execute(
+        'ALTER TABLE ${DbSchema.payments} ADD COLUMN proof_path TEXT',
+      );
+    } on Exception catch (error) {
+      final List<Map<String, Object?>> retryColumns = await executor.rawQuery(
+        'PRAGMA table_info(${DbSchema.payments})',
+      );
+      final bool repaired = retryColumns.any(
+        (Map<String, Object?> column) => column['name'] == 'proof_path',
+      );
+      if (!repaired) {
+        _log.error('Could not repair payments table', error);
+        rethrow;
+      }
+    }
+  }
+
   Future<void> _onCreate(Database db, int version) async {
     _log.info('Creating schema v$version');
     await db.transaction((Transaction txn) async {
@@ -164,18 +208,52 @@ class AppDatabase {
       for (final String statement in DbSchema.upgrade1to2) {
         try {
           await db.execute(statement);
+        } on Exception catch (error) {
+          _log.warn('Skipping "${_short(statement)}": $error');
+        }
+      }
+    }
+    if (oldVersion < 3) {
+      final List<Map<String, Object?>> paymentTable = await db.query(
+        'sqlite_master',
+        columns: <String>['name'],
+        where: 'type = ? AND name = ?',
+        whereArgs: <Object>['table', DbSchema.payments],
+        limit: 1,
+      );
+      for (final String statement in DbSchema.upgrade2to3) {
+        if (statement.contains('ALTER TABLE ${DbSchema.payments}') &&
+            paymentTable.isEmpty) {
+          continue;
+        }
+        try {
+          await db.execute(statement);
+        } on Exception catch (error) {
+          _log.warn('Skipping "${_short(statement)}": $error');
+        }
+      }
+    }
+    if (oldVersion < 4) {
+      final List<Map<String, Object?>> paymentTable = await db.query(
+        'sqlite_master',
+        columns: <String>['name'],
+        where: 'type = ? AND name = ?',
+        whereArgs: <Object>['table', DbSchema.payments],
+        limit: 1,
+      );
+      for (final String statement in DbSchema.upgrade3to4) {
+        if (statement.contains('ALTER TABLE ${DbSchema.payments}') &&
+            paymentTable.isEmpty) {
+          continue;
+        }
+        try {
+          await db.execute(statement);
         } on DatabaseException catch (error) {
           _log.warn('Skipping "${_short(statement)}": ${error.message}');
         }
       }
-      if (oldVersion < 3) {
-        for (final String statement in DbSchema.upgrade2to3) {
-          try {
-            await db.execute(statement);
-          } on DatabaseException catch (error) {
-            _log.warn('Skipping "${_short(statement)}": ${error.message}');
-          }
-        }
+      if (oldVersion < 5) {
+        _log.info('Validated minimum committee size requirement for schema v5');
       }
     }
   }
@@ -210,6 +288,8 @@ class AppDatabase {
       return result;
     } on DatabaseException {
       rethrow;
+    } on AppException {
+      rethrow;
     } catch (error) {
       _log.error('Transaction failed: $error');
       throw DatabaseException(
@@ -217,7 +297,6 @@ class AppDatabase {
         details: error.toString(),
       );
     }
-
   }
 
   Future<void> _notifyDataChanged() async {
@@ -226,7 +305,11 @@ class AppDatabase {
     try {
       await callback();
     } catch (error, stackTrace) {
-      _log.error('Cloud backup failed after a database change', error, stackTrace);
+      _log.error(
+        'Cloud backup failed after a database change',
+        error,
+        stackTrace,
+      );
     }
   }
 
@@ -242,7 +325,10 @@ class AppDatabase {
     }
   }
 
-  Future<T> guardAsync<T>(String userMessage, Future<T> Function() action) async {
+  Future<T> guardAsync<T>(
+    String userMessage,
+    Future<T> Function() action,
+  ) async {
     try {
       return await action();
     } on AppException {

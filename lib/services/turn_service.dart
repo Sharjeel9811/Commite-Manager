@@ -57,78 +57,77 @@ class TurnService {
   }
 
   /// Reconciles inside a transaction the caller already opened.
-  Future<Committee> reconcileInTransaction(Committee committee) => _reconcile(committee);
+  Future<Committee> reconcileInTransaction(Committee committee) =>
+      _reconcile(committee);
 
   Future<Committee> _reconcile(Committee committee) async {
     final List<CommitteeTurn> turns = await _turns.getByCommittee(committee.id);
     if (turns.isEmpty) return committee;
 
-    // 1. Fund every turn from the payments of its period.
+    // Recompute every turn from period completion. A period with no rows is
+    // never complete, even though 0 >= 0 would otherwise be true.
     for (final CommitteeTurn turn in turns) {
-      final int totalInPeriod = await _payments.countByPeriod(committee.id, turn.periodNumber);
-      final int paidInPeriod = await _payments.countPaidInPeriod(committee.id, turn.periodNumber);
-      final double collected = await _payments.sumPaidInPeriod(committee.id, turn.periodNumber);
-      final bool funded = totalInPeriod > 0 && paidInPeriod >= totalInPeriod;
-
+      final int totalInPeriod = await _payments.countByPeriod(
+        committee.id,
+        turn.periodNumber,
+      );
+      final int paidInPeriod = await _payments.countPaidInPeriod(
+        committee.id,
+        turn.periodNumber,
+      );
+      final double collected = await _payments.sumPaidInPeriod(
+        committee.id,
+        turn.periodNumber,
+      );
+      final bool funded = totalInPeriod > 0 && paidInPeriod == totalInPeriod;
       if (funded) {
-        if (turn.status != TurnStatus.completed) {
-          await _turns.update(
-            turn.copyWith(
-              status: TurnStatus.completed,
-              collectedAmount: collected,
-              completedAt: DateTime.now(),
-            ),
-          );
-          await _closePeriod(committee.id, turn.periodNumber);
-          _log.info('Turn ${turn.turnNumber} of "${committee.name}" completed');
-        } else if (turn.collectedAmount != collected) {
-          await _turns.updateCollected(turn.id, collected);
-        }
+        await _turns.update(
+          turn.copyWith(
+            status: TurnStatus.completed,
+            collectedAmount: collected,
+            completedAt: turn.completedAt ?? DateTime.now(),
+          ),
+        );
+        await _closePeriod(committee.id, turn.periodNumber);
       } else {
-        if (turn.collectedAmount != collected) {
-          await _turns.updateCollected(turn.id, collected);
-        }
-        // A payment was undone, so a completed turn must reopen.
-        if (turn.status == TurnStatus.completed) {
-          await _turns.update(
-            turn.copyWith(
-              status: TurnStatus.upcoming,
-              collectedAmount: collected,
-              clearCompletedAt: true,
-            ),
-          );
-          await _reopenPeriod(committee.id, turn.periodNumber);
-          _log.warn('Turn ${turn.turnNumber} of "${committee.name}" re-opened');
-        }
+        await _turns.update(
+          turn.copyWith(
+            status: TurnStatus.upcoming,
+            collectedAmount: collected,
+            clearCompletedAt: true,
+          ),
+        );
+        await _reopenPeriod(committee.id, turn.periodNumber);
       }
     }
 
-    // 2. Work out the new state of the rotation.
+    // The earliest non-completed turn is the only active turn.
     final List<CommitteeTurn> fresh = await _turns.getByCommittee(committee.id);
-    final int completedTurns = fresh.where((CommitteeTurn t) => t.isCompleted).length;
+    final int completedTurns = fresh
+        .where((CommitteeTurn t) => t.isCompleted)
+        .length;
     final CommitteeTurn? firstOpen = _firstUncompleted(fresh);
-    final int openCount = fresh.length - completedTurns;
-
-    final CommitteeTurn? active = firstOpen;
-    if (active != null && active.status != TurnStatus.active) {
-      await _turns.update(active.copyWith(status: TurnStatus.active));
-    }
     for (final CommitteeTurn turn in fresh) {
-      final bool isAfterActive = active != null && turn.turnNumber > active.turnNumber;
-      final bool shouldBeActive = active != null && turn.id == active.id;
-      final TurnStatus desired = shouldBeActive
-          ? TurnStatus.active
-          : (isAfterActive || (active == null && !turn.isCompleted)
-                ? TurnStatus.upcoming
-                : turn.status);
-      if (turn.status != desired && !turn.isCompleted) {
-        await _turns.update(turn.copyWith(status: desired));
+      final TurnStatus desired = turn.isCompleted
+          ? TurnStatus.completed
+          : (turn.id == firstOpen?.id
+                ? TurnStatus.active
+                : TurnStatus.upcoming);
+      if (turn.status != desired) {
+        await _turns.update(
+          turn.copyWith(
+            status: desired,
+            clearCompletedAt: desired != TurnStatus.completed,
+          ),
+        );
       }
     }
 
-    final bool allDone = openCount == 0;
-    final CommitteeStatus status = allDone ? CommitteeStatus.completed : CommitteeStatus.active;
-    final int currentTurn = active?.turnNumber ?? committee.durationPeriods;
+    final bool allDone = firstOpen == null;
+    final CommitteeStatus status = allDone
+        ? CommitteeStatus.completed
+        : CommitteeStatus.active;
+    final int currentTurn = firstOpen?.turnNumber ?? committee.durationPeriods;
 
     final Committee updated = committee.copyWith(
       completedTurns: completedTurns,
@@ -150,14 +149,20 @@ class TurnService {
   }
 
   Future<void> _closePeriod(String committeeId, int periodNumber) async {
-    final PaymentSchedule? schedule = await _schedules.getByPeriod(committeeId, periodNumber);
+    final PaymentSchedule? schedule = await _schedules.getByPeriod(
+      committeeId,
+      periodNumber,
+    );
     if (schedule != null && !schedule.isClosed) {
       await _schedules.closePeriod(schedule.id);
     }
   }
 
   Future<void> _reopenPeriod(String committeeId, int periodNumber) async {
-    final PaymentSchedule? schedule = await _schedules.getByPeriod(committeeId, periodNumber);
+    final PaymentSchedule? schedule = await _schedules.getByPeriod(
+      committeeId,
+      periodNumber,
+    );
     if (schedule != null && schedule.isClosed) {
       await _schedules.reopenPeriod(schedule.id);
     }
@@ -173,27 +178,35 @@ class TurnService {
   // ------------------------------------------------------------------ Queries
 
   /// Who is collecting the pool right now.
-  Future<({Member? member, int turnNumber, double expectedAmount})> currentRecipient(
-    String committeeId,
-  ) async {
+  Future<({Member? member, int turnNumber, double expectedAmount})>
+  currentRecipient(String committeeId) async {
     final CommitteeTurn? turn = await _turns.getActive(committeeId);
     if (turn == null) return (member: null, turnNumber: 0, expectedAmount: 0.0);
     final Member? member = await _members.getById(turn.memberId);
-    return (member: member, turnNumber: turn.turnNumber, expectedAmount: turn.expectedAmount);
+    return (
+      member: member,
+      turnNumber: turn.turnNumber,
+      expectedAmount: turn.expectedAmount,
+    );
   }
 
   /// Who collects after the current recipient.
   Future<Member?> nextRecipient(String committeeId) async {
     final Committee? committee = await _committees.getById(committeeId);
     if (committee == null) return null;
-    final CommitteeTurn? next = await _turns.getByNumber(committeeId, committee.currentTurn + 1);
+    final CommitteeTurn? next = await _turns.getByNumber(
+      committeeId,
+      committee.currentTurn + 1,
+    );
     if (next == null) return null;
     return _members.getById(next.memberId);
   }
 
-  Future<List<CommitteeTurn>> turnsOf(String committeeId) => _turns.getByCommittee(committeeId);
+  Future<List<CommitteeTurn>> turnsOf(String committeeId) =>
+      _turns.getByCommittee(committeeId);
 
-  Future<CommitteeTurn?> turnOfMember(String memberId) => _turns.getByMember(memberId);
+  Future<CommitteeTurn?> turnOfMember(String memberId) =>
+      _turns.getByMember(memberId);
 
   /// Guards against a member appearing twice in the rotation. The database has
   /// `UNIQUE (committee_id, member_id)` as the real guarantee; this gives the

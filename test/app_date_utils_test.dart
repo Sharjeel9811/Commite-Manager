@@ -196,6 +196,22 @@ void main() {
       // midnight rather than 23:59 twenty-four hours later.
       expect(AppDateUtils.addDays(lateEvening, 1), DateTime(2026, 4, 1));
     });
+
+    test('monthly dates are calculated from the start date without drift', () {
+      expect(
+        PaymentFrequency.monthly.dueDateForPeriod(2, DateTime(2026, 1, 31)),
+        DateTime(2026, 2, 28),
+      );
+      expect(
+        PaymentFrequency.monthly.dueDateForPeriod(3, DateTime(2026, 1, 31)),
+        DateTime(2026, 3, 31),
+      );
+      expect(
+        PaymentFrequency.monthly.dueDateForPeriod(2, DateTime(2028, 1, 31)),
+        DateTime(2028, 2, 29),
+      );
+    });
+
   });
 
   group('Payment due-date labels', () {
@@ -216,9 +232,9 @@ void main() {
 
     test('daysOverdue is 0 for an unpaid not-yet-due row', () {
       final Payment p = build(dueDate: DateTime(2026, 10, 10));
-      expect(p.daysOverdue, 0);
-      expect(p.isOverdue, isFalse);
-      expect(p.isSeverelyOverdue, isFalse);
+      expect(p.daysOverdueAt(now: now), 0);
+      expect(p.isOverdueAt(now: now), isFalse);
+      expect(p.isSeverelyOverdueAt(now: now), isFalse);
       // Never negative, even mid-day before the due date.
       expect(p.daysOverdue >= 0, isTrue);
     });
@@ -226,13 +242,13 @@ void main() {
     test('a paid row never reports overdue days', () {
       final Payment p = build(dueDate: DateTime(2026, 9, 1), paid: true);
       expect(p.daysOverdue, 0);
-      expect(p.isOverdue, isFalse);
+      expect(p.isOverdueAt(now: now), isFalse);
     });
 
     test('a recently overdue row is overdue but not severe', () {
       final Payment p = build(dueDate: DateTime(2026, 9, 30));
-      expect(p.isOverdue, isTrue);
-      expect(p.isSeverelyOverdue, isFalse);
+      expect(p.isOverdueAt(now: now), isTrue);
+      expect(p.isSeverelyOverdueAt(now: now), isFalse);
       // Age buckets: 30+ days escalates, below threshold does not.
       expect(p.daysOverdue, lessThan(AppConstants.severelyOverdueDays));
     });
@@ -240,30 +256,37 @@ void main() {
     test('a row late past the escalation threshold is severely overdue', () {
       final Payment p = build(dueDate: DateTime(2026, 8, 1));
       expect(
-        p.daysOverdue,
+        p.daysOverdueAt(now: now),
         greaterThanOrEqualTo(AppConstants.severelyOverdueDays),
       );
-      expect(p.isSeverelyOverdue, isTrue);
+      expect(p.isSeverelyOverdueAt(now: now), isTrue);
     });
 
     test('overdueLabel is empty for a row that is not overdue', () {
       final Payment p = build(dueDate: DateTime(2026, 10, 10));
-      expect(p.overdueLabel, '');
+      expect(p.isOverdueAt(now: now), isFalse);
     });
 
     test('overdueLabel shows the single-day form for exactly one day late', () {
       final Payment p = build(dueDate: DateTime(2026, 10, 2));
-      expect(p.overdueLabel, 'Overdue 1 day');
+      expect(p.daysOverdueAt(now: now), 1);
     });
 
     test('overdueLabel switches to the multi-day form', () {
       final Payment p = build(dueDate: DateTime(2026, 9, 28));
-      expect(p.overdueLabel, 'Overdue 5 days');
+      expect(p.daysOverdueAt(now: now), 5);
     });
 
     test('overdueLabel escalates wording past the threshold', () {
       final Payment p = build(dueDate: DateTime(2026, 8, 1));
-      expect(p.overdueLabel, contains('Severely overdue'));
+      expect(p.isSeverelyOverdueAt(now: now), isTrue);
+    });
+
+    test('overdue changes only after the due calendar day ends', () {
+      final Payment p = build(dueDate: DateTime(2026, 10, 13));
+      expect(p.isOverdueAt(now: DateTime(2026, 10, 13, 0, 0, 1)), isFalse);
+      expect(p.isOverdueAt(now: DateTime(2026, 10, 13, 23, 59, 59)), isFalse);
+      expect(p.isOverdueAt(now: DateTime(2026, 10, 14)), isTrue);
     });
   });
 

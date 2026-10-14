@@ -63,9 +63,9 @@ class _StubbedAuthProvider extends AuthProvider {
   }
 
   @override
-  Future<void> lock() async {
+  Future<void> lock({bool force = false}) async {
     lockCalls++;
-    if (preferences.lockEnabled) _locked = true;
+    if (force || preferences.lockEnabled) _locked = true;
   }
 }
 
@@ -137,7 +137,10 @@ void main() {
 
   setUp(() async {
     SharedPreferences.setMockInitialValues(<String, Object>{});
-    db = AppDatabase(factory: databaseFactoryFfi, overridePath: inMemoryDatabasePath);
+    db = AppDatabase(
+      factory: databaseFactoryFfi,
+      overridePath: inMemoryDatabasePath,
+    );
     await ServiceLocator.wire(databaseOverride: db);
     notifications = _FakeNotificationService();
     ServiceLocator.instance.override<NotificationService>(notifications);
@@ -174,18 +177,17 @@ void main() {
         value: auth,
         child: AppSessionGuard(
           now: clock == null ? null : () => clock.now,
-          builder:
-              (GlobalKey<NavigatorState> key) => MaterialApp(
-                navigatorKey: key,
-                initialRoute: initialRoute,
-                onGenerateRoute: (RouteSettings settings) => MaterialPageRoute<void>(
+          builder: (GlobalKey<NavigatorState> key) => MaterialApp(
+            navigatorKey: key,
+            initialRoute: initialRoute,
+            onGenerateRoute: (RouteSettings settings) =>
+                MaterialPageRoute<void>(
                   settings: settings,
-                  builder: (_) =>
-                      settings.name == AppRoutes.committeeDetails
+                  builder: (_) => settings.name == AppRoutes.committeeDetails
                       ? _LandingPage()
                       : const Scaffold(body: Text('THE-HOME')),
                 ),
-              ),
+          ),
         ),
       ),
     );
@@ -199,12 +201,19 @@ void main() {
     _TestClock? clock,
   }) async {
     final _StubbedAuthProvider auth = authWith(prefs: prefs);
-    await pumpGuardWith(tester, auth: auth, initialRoute: initialRoute, clock: clock);
+    await pumpGuardWith(
+      tester,
+      auth: auth,
+      initialRoute: initialRoute,
+      clock: clock,
+    );
     return auth;
   }
 
   group('notification deep links', () {
-    testWidgets('a tap on a signed-in session opens the committee', (WidgetTester tester) async {
+    testWidgets('a tap on a signed-in session opens the committee', (
+      WidgetTester tester,
+    ) async {
       await pumpGuard(tester);
 
       notifications.tap('committee:$committeeId');
@@ -214,35 +223,43 @@ void main() {
       expect(find.text('THE-HOME'), findsNothing);
     });
 
-    testWidgets('a tap while locked waits instead of pushing over the lock screen', (
-      WidgetTester tester,
-    ) async {
-      // `lockEnabled: false` means the stub cannot represent a locked app, so
-      // the locked case is reached the way a real user reaches it: the app locks
-      // itself, then the tap arrives.
-      final _StubbedAuthProvider auth = await pumpGuard(tester);
-      expect(notifications.handler, isNotNull);
+    testWidgets(
+      'a tap while locked waits instead of pushing over the lock screen',
+      (WidgetTester tester) async {
+        // `lockEnabled: false` means the stub cannot represent a locked app, so
+        // the locked case is reached the way a real user reaches it: the app locks
+        // itself, then the tap arrives.
+        final _StubbedAuthProvider auth = await pumpGuard(tester);
+        expect(notifications.handler, isNotNull);
 
-      await auth.lock();
-      notifications.tap('committee:$committeeId');
-      await tester.pumpAndSettle();
+        await auth.lock();
+        notifications.tap('committee:$committeeId');
+        await tester.pumpAndSettle();
 
-      expect(find.text('THE-HOME'), findsOneWidget, reason: 'nothing may be pushed while locked');
-    });
+        expect(
+          find.text('THE-HOME'),
+          findsOneWidget,
+          reason: 'nothing may be pushed while locked',
+        );
+      },
+    );
 
-    testWidgets('a cold start from a notification opens the committee once in', (
-      WidgetTester tester,
-    ) async {
-      notifications = _FakeNotificationService(launchedWith: 'committee:$committeeId');
-      locator.override<NotificationService>(notifications);
+    testWidgets(
+      'a cold start from a notification opens the committee once in',
+      (WidgetTester tester) async {
+        notifications = _FakeNotificationService(
+          launchedWith: 'committee:$committeeId',
+        );
+        locator.override<NotificationService>(notifications);
 
-      await pumpGuard(tester);
-      // The launch payload is read in a post-frame callback and pushed in a
-      // second one, so the tree needs a couple of turns to settle.
-      await tester.pumpAndSettle();
+        await pumpGuard(tester);
+        // The launch payload is read in a post-frame callback and pushed in a
+        // second one, so the tree needs a couple of turns to settle.
+        await tester.pumpAndSettle();
 
-      expect(find.text('THE-COMMITTEE'), findsOneWidget);
-    });
+        expect(find.text('THE-COMMITTEE'), findsOneWidget);
+      },
+    );
 
     testWidgets('an unrecognised payload is ignored rather than crashing', (
       WidgetTester tester,
@@ -269,7 +286,9 @@ void main() {
       final _StubbedAuthProvider auth = await pumpGuard(tester, clock: clock);
 
       tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.paused);
-      clock.advance(AppConstants.sessionIdleTimeout + const Duration(seconds: 1));
+      clock.advance(
+        AppConstants.sessionIdleTimeout + const Duration(seconds: 1),
+      );
       tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.resumed);
       await tester.pumpAndSettle();
 
@@ -337,7 +356,11 @@ void main() {
       await tester.pump(const Duration(minutes: 1));
       await tester.pumpAndSettle();
 
-      expect(auth.lockCalls, 0, reason: 'the touch restarted the five-minute window');
+      expect(
+        auth.lockCalls,
+        0,
+        reason: 'the touch restarted the five-minute window',
+      );
 
       clock.advance(const Duration(seconds: 1));
       await tester.pump(const Duration(minutes: 4));
@@ -346,7 +369,9 @@ void main() {
       expect(auth.lockCalls, 1);
     });
 
-    testWidgets('a locked app is never locked a second time', (WidgetTester tester) async {
+    testWidgets('a locked app is never locked a second time', (
+      WidgetTester tester,
+    ) async {
       final _TestClock clock = _TestClock();
       final _StubbedAuthProvider auth = await pumpGuard(tester, clock: clock);
 
@@ -376,7 +401,11 @@ void main() {
       clock.advance(const Duration(minutes: 10));
       tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.resumed);
       await tester.pumpAndSettle();
-      expect(auth.lockCalls, 0, reason: '10 minutes is well inside the chosen 30');
+      expect(
+        auth.lockCalls,
+        0,
+        reason: '10 minutes is well inside the chosen 30',
+      );
 
       tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.paused);
       clock.advance(const Duration(minutes: 31));
@@ -388,7 +417,12 @@ void main() {
     test('the offered options all sit inside the settings model', () {
       // Guards against a picker option that `AppSettings` cannot represent.
       for (final int minutes in <int>[1, 2, 5, 10, 15, 30]) {
-        expect(const AppSettings().copyWith(lockTimeoutMinutes: minutes).lockTimeoutMinutes, minutes);
+        expect(
+          const AppSettings()
+              .copyWith(lockTimeoutMinutes: minutes)
+              .lockTimeoutMinutes,
+          minutes,
+        );
       }
     });
   });
@@ -398,50 +432,68 @@ void main() {
     // screen wrote the preference to the repository while `MaterialApp` watched
     // a *different* provider, so choosing a theme appeared to do nothing until
     // the app was restarted.
-    test('choosing a theme applies immediately and survives a restart', () async {
-      final _InMemorySettings repository = _InMemorySettings();
-      final ThemeProvider theme = ThemeProvider(settingsRepository: repository);
-      final SettingsProvider settings = SettingsProvider(
-        settingsRepository: repository,
-        reminderService: locator.get<ReminderService>(),
-        notificationService: _FakeNotificationService(),
-        demoDataService: locator.get<DemoDataService>(),
-        authService: locator.get<AuthService>(),
-        themeProvider: theme,
-      );
-      await settings.load();
+    test(
+      'choosing a theme applies immediately and survives a restart',
+      () async {
+        final _InMemorySettings repository = _InMemorySettings();
+        final ThemeProvider theme = ThemeProvider(
+          settingsRepository: repository,
+        );
+        final SettingsProvider settings = SettingsProvider(
+          settingsRepository: repository,
+          reminderService: locator.get<ReminderService>(),
+          notificationService: _FakeNotificationService(),
+          demoDataService: locator.get<DemoDataService>(),
+          authService: locator.get<AuthService>(),
+          themeProvider: theme,
+        );
+        await settings.load();
 
-      expect(theme.themeMode, ThemeMode.system);
+        expect(theme.themeMode, ThemeMode.system);
 
-      await settings.setTheme(AppThemePreference.dark);
-      expect(theme.themeMode, ThemeMode.dark, reason: 'the switch must apply immediately');
+        await settings.setTheme(AppThemePreference.dark);
+        expect(
+          theme.themeMode,
+          ThemeMode.dark,
+          reason: 'the switch must apply immediately',
+        );
 
-      await settings.setTheme(AppThemePreference.light);
-      expect(theme.themeMode, ThemeMode.light);
+        await settings.setTheme(AppThemePreference.light);
+        expect(theme.themeMode, ThemeMode.light);
 
-      // And the next launch has to come up in the chosen theme, not the default.
-      final ThemeProvider relaunched = ThemeProvider(settingsRepository: repository);
-      await relaunched.load();
-      expect(relaunched.themeMode, ThemeMode.light);
-    });
+        // And the next launch has to come up in the chosen theme, not the default.
+        final ThemeProvider relaunched = ThemeProvider(
+          settingsRepository: repository,
+        );
+        await relaunched.load();
+        expect(relaunched.themeMode, ThemeMode.light);
+      },
+    );
 
-    test('loading preferences restores the saved theme before the first frame', () async {
-      final _InMemorySettings repository = _InMemorySettings();
-      await repository.save(const AppSettings(themePreference: AppThemePreference.dark));
+    test(
+      'loading preferences restores the saved theme before the first frame',
+      () async {
+        final _InMemorySettings repository = _InMemorySettings();
+        await repository.save(
+          const AppSettings(themePreference: AppThemePreference.dark),
+        );
 
-      final ThemeProvider theme = ThemeProvider(settingsRepository: repository);
-      final SettingsProvider settings = SettingsProvider(
-        settingsRepository: repository,
-        reminderService: locator.get<ReminderService>(),
-        notificationService: _FakeNotificationService(),
-        demoDataService: locator.get<DemoDataService>(),
-        authService: locator.get<AuthService>(),
-        themeProvider: theme,
-      );
-      await settings.load();
+        final ThemeProvider theme = ThemeProvider(
+          settingsRepository: repository,
+        );
+        final SettingsProvider settings = SettingsProvider(
+          settingsRepository: repository,
+          reminderService: locator.get<ReminderService>(),
+          notificationService: _FakeNotificationService(),
+          demoDataService: locator.get<DemoDataService>(),
+          authService: locator.get<AuthService>(),
+          themeProvider: theme,
+        );
+        await settings.load();
 
-      expect(theme.themeMode, ThemeMode.dark);
-    });
+        expect(theme.themeMode, ThemeMode.dark);
+      },
+    );
   });
 
   group('security settings reach the running session', () {
@@ -470,7 +522,11 @@ void main() {
       expect(auth.preferences.lockEnabled, isFalse);
 
       await settings.setLockEnabled(true);
-      expect(auth.preferences.lockEnabled, isTrue, reason: 'must not need a restart');
+      expect(
+        auth.preferences.lockEnabled,
+        isTrue,
+        reason: 'must not need a restart',
+      );
     });
 
     test('a new lock timeout is adopted immediately', () async {
@@ -494,53 +550,63 @@ void main() {
       expect(auth.preferences.lockTimeoutMinutes, 30);
     });
 
-    test('a PIN enabled just before a crash is active on the next run', () async {
-      final _InMemorySettings repository = _InMemorySettings();
-      await repository.save(const AppSettings(lockEnabled: true, lockTimeoutMinutes: 15));
+    test(
+      'a PIN enabled just before a crash is active on the next run',
+      () async {
+        final _InMemorySettings repository = _InMemorySettings();
+        await repository.save(
+          const AppSettings(lockEnabled: true, lockTimeoutMinutes: 15),
+        );
 
-      final _StubbedAuthProvider auth = _StubbedAuthProvider(
-        locator.get<AuthService>(),
-        repository,
-        prefs: const AppSettings(),
-      );
-      final SettingsProvider settings = SettingsProvider(
-        settingsRepository: repository,
-        reminderService: locator.get<ReminderService>(),
-        notificationService: _FakeNotificationService(),
-        demoDataService: locator.get<DemoDataService>(),
-        authService: locator.get<AuthService>(),
-        authProvider: auth,
-      );
-      await settings.load();
+        final _StubbedAuthProvider auth = _StubbedAuthProvider(
+          locator.get<AuthService>(),
+          repository,
+          prefs: const AppSettings(),
+        );
+        final SettingsProvider settings = SettingsProvider(
+          settingsRepository: repository,
+          reminderService: locator.get<ReminderService>(),
+          notificationService: _FakeNotificationService(),
+          demoDataService: locator.get<DemoDataService>(),
+          authService: locator.get<AuthService>(),
+          authProvider: auth,
+        );
+        await settings.load();
 
-      expect(auth.preferences.lockEnabled, isTrue);
-      expect(auth.preferences.lockTimeoutMinutes, 15);
-    });
+        expect(auth.preferences.lockEnabled, isTrue);
+        expect(auth.preferences.lockTimeoutMinutes, 15);
+      },
+    );
   });
 
   group('a new session is guarded immediately', () {
     // The timer used to be armed only by a tap or a resume, so a user who
     // signed in and put the phone down without touching the screen again was
     // never locked.
-    testWidgets('signing in starts the idle window without further interaction', (
-      WidgetTester tester,
-    ) async {
-      final _TestClock clock = _TestClock();
-      final _StubbedAuthProvider auth = _StubbedAuthProvider(
-        locator.get<AuthService>(),
-        _InMemorySettings(),
-        prefs: const AppSettings(lockEnabled: true, lockTimeoutMinutes: 5),
-      );
-      await pumpGuardWith(tester, auth: auth, clock: clock);
+    testWidgets(
+      'signing in starts the idle window without further interaction',
+      (WidgetTester tester) async {
+        final _TestClock clock = _TestClock();
+        final _StubbedAuthProvider auth = _StubbedAuthProvider(
+          locator.get<AuthService>(),
+          _InMemorySettings(),
+          prefs: const AppSettings(lockEnabled: true, lockTimeoutMinutes: 5),
+        );
+        await pumpGuardWith(tester, auth: auth, clock: clock);
 
-      auth.signIn();
-      await tester.pumpAndSettle();
+        auth.signIn();
+        await tester.pumpAndSettle();
 
-      // No tap, no backgrounding, no further interaction of any kind.
-      clock.advance(const Duration(minutes: 6));
-      await tester.pumpAndSettle(const Duration(minutes: 6));
-      expect(auth.lockCalls, 1, reason: 'idle time must count from the sign-in');
-    });
+        // No tap, no backgrounding, no further interaction of any kind.
+        clock.advance(const Duration(minutes: 6));
+        await tester.pumpAndSettle(const Duration(minutes: 6));
+        expect(
+          auth.lockCalls,
+          1,
+          reason: 'idle time must count from the sign-in',
+        );
+      },
+    );
   });
 }
 

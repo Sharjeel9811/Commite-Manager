@@ -49,12 +49,14 @@ class PaymentService {
 
   // ------------------------------------------------------------------ Reads
 
-  Future<List<Payment>> forCommittee(String committeeId) => _payments.getByCommittee(committeeId);
+  Future<List<Payment>> forCommittee(String committeeId) =>
+      _payments.getByCommittee(committeeId);
 
   Future<List<Payment>> forPeriod(String committeeId, int periodNumber) =>
       _payments.getByPeriod(committeeId, periodNumber);
 
-  Future<List<Payment>> forMember(String memberId) => _payments.getByMember(memberId);
+  Future<List<Payment>> forMember(String memberId) =>
+      _payments.getByMember(memberId);
 
   /// The period most worth showing when someone opens the collection screen.
   ///
@@ -68,26 +70,45 @@ class PaymentService {
   ///
   /// Falls back to the live turn, then to the next open period, so an
   /// up-to-date committee behaves exactly as before.
-  Future<PaymentSchedule?> defaultPeriod(String committeeId, Committee committee) async {
+  Future<PaymentSchedule?> defaultPeriod(
+    String committeeId,
+    Committee committee,
+  ) async {
     final List<Payment> all = await _payments.getByCommittee(committeeId);
     final Map<int, int> pendingByPeriod = <int, int>{};
     for (final Payment p in all) {
-      if (!p.isPaid) pendingByPeriod.update(p.periodNumber, (int n) => n + 1, ifAbsent: () => 1);
+      if (!p.isPaid)
+        pendingByPeriod.update(
+          p.periodNumber,
+          (int n) => n + 1,
+          ifAbsent: () => 1,
+        );
     }
     if (pendingByPeriod.isNotEmpty) {
-      final int oldest = pendingByPeriod.keys.reduce((int a, int b) => a < b ? a : b);
-      final PaymentSchedule? owed = await _schedules.getByPeriod(committeeId, oldest);
+      final int oldest = pendingByPeriod.keys.reduce(
+        (int a, int b) => a < b ? a : b,
+      );
+      final PaymentSchedule? owed = await _schedules.getByPeriod(
+        committeeId,
+        oldest,
+      );
       if (owed != null) return owed;
     }
 
-    final int current = committee.currentTurn.clamp(1, committee.durationPeriods);
+    final int current = committee.currentTurn.clamp(
+      1,
+      committee.durationPeriods,
+    );
     return await _schedules.getByPeriod(committeeId, current) ??
         await _schedules.getNextOpen(committeeId, DateTime.now());
   }
 
   /// Joins payments with member names so the list screen can render rows
   /// without an N+1 query per row.
-  Future<List<PaymentRow>> rowsFor(String committeeId, PaymentFilter filter) async {
+  Future<List<PaymentRow>> rowsFor(
+    String committeeId,
+    PaymentFilter filter,
+  ) async {
     final List<Payment> payments = await _payments.getByCommittee(committeeId);
     final List<Member> members = await _members.getByCommittee(committeeId);
     final Map<String, String> names = <String, String>{
@@ -114,7 +135,10 @@ class PaymentService {
     int periodNumber,
     PaymentFilter filter,
   ) async {
-    final List<Payment> payments = await _payments.getByPeriod(committeeId, periodNumber);
+    final List<Payment> payments = await _payments.getByPeriod(
+      committeeId,
+      periodNumber,
+    );
     final List<Member> members = await _members.getByCommittee(committeeId);
     final Map<String, String> names = <String, String>{
       for (final Member m in members) m.id: m.name,
@@ -136,7 +160,8 @@ class PaymentService {
 
   Future<Payment> getById(String id) async {
     final Payment? payment = await _payments.getById(id);
-    if (payment == null) throw const NotFoundException('This payment could not be found.');
+    if (payment == null)
+      throw const NotFoundException('This payment could not be found.');
     return payment;
   }
 
@@ -154,14 +179,14 @@ class PaymentService {
     String? proofPath,
     String? notes,
   }) async {
-    final Payment payment = await getById(paymentId);
-    if (payment.isPaid) {
-      throw const DuplicateException('This payment has already been recorded.');
-    }
-    final Committee? committee = await _committees.getById(payment.committeeId);
-    if (committee == null) throw const NotFoundException('The committee no longer exists.');
-
     await _db.transaction<void>((Transaction txn) async {
+      final Payment? payment = await _payments.getById(paymentId);
+      if (payment == null) throw const NotFoundException('This payment could not be found.');
+      if (payment.isPaid) {
+        throw const DuplicateException('This payment has already been recorded.');
+      }
+      final Committee? committee = await _committees.getById(payment.committeeId);
+      if (committee == null) throw const NotFoundException('The committee no longer exists.');
       await _payments.markPaid(
         paymentId,
         paidAt ?? DateTime.now(),
@@ -170,7 +195,9 @@ class PaymentService {
         notes: notes,
       );
       await _turns.reconcileInTransaction(committee);
-      _log.info('Payment ${payment.periodNumber}/${payment.memberId} marked paid');
+      _log.info(
+        'Payment ${payment.periodNumber}/${payment.memberId} marked paid',
+      );
     });
   }
 
@@ -181,8 +208,13 @@ class PaymentService {
     PaymentMethod? method,
   }) async {
     final Committee committee = await _requireCommittee(committeeId);
-    final List<Payment> payments = await _payments.getByPeriod(committeeId, periodNumber);
-    final List<Payment> unpaid = payments.where((Payment p) => !p.isPaid).toList(growable: false);
+    final List<Payment> payments = await _payments.getByPeriod(
+      committeeId,
+      periodNumber,
+    );
+    final List<Payment> unpaid = payments
+        .where((Payment p) => !p.isPaid)
+        .toList(growable: false);
 
     await _db.transaction<void>((Transaction txn) async {
       final DateTime now = DateTime.now();
@@ -197,14 +229,14 @@ class PaymentService {
 
   /// Undoes a payment. The turn it funded automatically re-opens.
   Future<void> markUnpaid(String paymentId) async {
-    final Payment payment = await getById(paymentId);
-    if (!payment.isPaid) {
-      throw const BusinessRuleException('This payment is already marked as pending.');
-    }
-    final Committee? committee = await _committees.getById(payment.committeeId);
-    if (committee == null) throw const NotFoundException('The committee no longer exists.');
-
     await _db.transaction<void>((Transaction txn) async {
+      final Payment? payment = await _payments.getById(paymentId);
+      if (payment == null) throw const NotFoundException('This payment could not be found.');
+      if (!payment.isPaid) {
+        throw const BusinessRuleException('This payment is already marked as pending.');
+      }
+      final Committee? committee = await _committees.getById(payment.committeeId);
+      if (committee == null) throw const NotFoundException('The committee no longer exists.');
       await _payments.markUnpaid(paymentId);
       await _turns.reconcileInTransaction(committee);
       _log.warn('Payment ${payment.id} reverted to pending');
@@ -220,11 +252,14 @@ class PaymentService {
 
   // -------------------------------------------------------------- Aggregates
 
-  Future<double> collectedIn(String committeeId) => _payments.sumPaid(committeeId);
+  Future<double> collectedIn(String committeeId) =>
+      _payments.sumPaid(committeeId);
 
-  Future<double> pendingIn(String committeeId) => _payments.sumPending(committeeId);
+  Future<double> pendingIn(String committeeId) =>
+      _payments.sumPending(committeeId);
 
-  Future<int> pendingCountIn(String committeeId) => _payments.countPending(committeeId);
+  Future<int> pendingCountIn(String committeeId) =>
+      _payments.countPending(committeeId);
 
   Future<int> overdueCountIn(String committeeId) =>
       _payments.countOverdue(committeeId, DateTime.now());
@@ -235,10 +270,16 @@ class PaymentService {
 
   /// The next due date that has not been fully paid — powers the dashboard card.
   Future<DateTime?> nextDueDate(String committeeId) async {
-    final List<PaymentSchedule> periods = await _schedules.getByCommittee(committeeId);
+    final List<PaymentSchedule> periods = await _schedules.getByCommittee(
+      committeeId,
+    );
     for (final PaymentSchedule period in periods) {
       if (period.isClosed) continue;
-      if (await _payments.countPendingInPeriod(committeeId, period.periodNumber) > 0) {
+      if (await _payments.countPendingInPeriod(
+            committeeId,
+            period.periodNumber,
+          ) >
+          0) {
         return period.dueDate;
       }
     }
@@ -247,7 +288,8 @@ class PaymentService {
 
   Future<Committee> _requireCommittee(String id) async {
     final Committee? committee = await _committees.getById(id);
-    if (committee == null) throw const NotFoundException('This committee could not be found.');
+    if (committee == null)
+      throw const NotFoundException('This committee could not be found.');
     return committee;
   }
 }
@@ -255,7 +297,11 @@ class PaymentService {
 /// A payment joined with the member it belongs to — exactly what a list row
 /// needs, and nothing more (Interface Segregation at the data level).
 class PaymentRow {
-  const PaymentRow({required this.payment, required this.memberName, required this.turnNumber});
+  const PaymentRow({
+    required this.payment,
+    required this.memberName,
+    required this.turnNumber,
+  });
 
   final Payment payment;
   final String memberName;
@@ -274,4 +320,5 @@ class PaymentRow {
   String get overdueLabel => payment.overdueLabel;
   PaymentStatus get status => payment.effectiveStatus;
   PaymentMethod? get method => payment.method;
+  String? get proofPath => payment.proofPath;
 }

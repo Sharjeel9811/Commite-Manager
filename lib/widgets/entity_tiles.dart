@@ -37,14 +37,18 @@ class CommitteeTile extends StatelessWidget {
               children: <Widget>[
                 Text(
                   committee.name,
-                  style: theme.textTheme.titleSmall,
+                  style: theme.textTheme.titleSmall?.copyWith(
+                    color: scheme.onSurface,
+                  ),
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
                 ),
                 const SizedBox(height: 2),
                 Text(
                   '${committee.memberCount} members • ${CurrencyFormatter.format(committee.contributionAmount)} ${committee.frequency.label.toLowerCase()}',
-                  style: theme.textTheme.bodySmall,
+                  style: theme.textTheme.bodySmall?.copyWith(
+                    color: scheme.onSurfaceVariant,
+                  ),
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
                 ),

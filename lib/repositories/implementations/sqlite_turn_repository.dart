@@ -73,11 +73,13 @@ class SqliteTurnRepository implements TurnRepository {
       _appDatabase.guardAsync('Could not set up the turn order.', () async {
         if (turns.isEmpty) return;
         final DatabaseExecutor db = await _appDatabase.executor;
-        final Batch batch = db.batch();
         for (final CommitteeTurn turn in turns) {
-          batch.insert(DbSchema.turns, turn.toMap(), conflictAlgorithm: ConflictAlgorithm.ignore);
+          await db.insert(
+            DbSchema.turns,
+            turn.toMap(),
+            conflictAlgorithm: ConflictAlgorithm.ignore,
+          );
         }
-        await batch.commit(noResult: true);
         _log.info('Generated ${turns.length} turns');
       });
 

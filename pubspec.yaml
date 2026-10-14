@@ -1,7 +1,7 @@
 name: committee_manager
 description: "Committee Manager - offline-first Bachat Committee / Committee management app."
 publish_to: 'none'
-version: 1.0.0+1
+version: 1.0.0+2
 
 environment:
   sdk: ^3.13.4
@@ -39,11 +39,12 @@ dependencies:
   # Used by the self-hosted OTP gateway transport. A mobile app cannot hold SMTP
   # credentials, so `http` is the only way to reach the Nodemailer server.
   http: ^1.2.2
+  image_picker: ^1.1.2
+  path_provider: ^2.1.5
 
   # PDF report generation for organizer
   pdf: ^3.11.1
   printing: ^5.13.2
-  image_picker: ^1.2.4
 
 dev_dependencies:
   flutter_test:

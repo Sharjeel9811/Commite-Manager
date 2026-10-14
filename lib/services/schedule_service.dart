@@ -1,5 +1,6 @@
 import 'package:sqflite/sqflite.dart' hide DatabaseException;
 
+import '../core/errors/app_exception.dart';
 import '../core/utils/logger.dart';
 import '../database/app_database.dart';
 import '../models/committee.dart';
@@ -88,8 +89,14 @@ class ScheduleService {
   /// Does **not** open a transaction — the caller decides the transaction
   /// boundary, so this method can be reused from a rebuild as well.
   Future<void> generateRowsFor(Committee committee, List<Member> members) async {
+    if (await _payments.countPaidRows(committee.id) > 0) {
+      throw const BusinessRuleException(
+        'This schedule cannot be generated because it contains payments marked paid.',
+      );
+    }
     if (members.isEmpty) return;
 
+    await _db.ensurePaymentProofColumn();
     final List<Member> ordered = List<Member>.of(members)
       ..sort((Member a, Member b) => a.turnNumber.compareTo(b.turnNumber));
 
@@ -109,6 +116,11 @@ class ScheduleService {
   /// `MemberService`, [ensureFor]) already own one, and sqflite cannot nest
   /// transactions on the same connection.
   Future<void> clearRows(String committeeId) async {
+    if (await _payments.countPaidRows(committeeId) > 0) {
+      throw const BusinessRuleException(
+        'This schedule cannot be rebuilt because it contains payments marked paid.',
+      );
+    }
     await _turns.deleteByCommittee(committeeId);
     await _payments.deleteByCommittee(committeeId);
     await _schedules.deleteByCommittee(committeeId);
@@ -125,6 +137,13 @@ class ScheduleService {
 
     if (periods.length == committee.durationPeriods && turns.length == members.length) {
       return;
+    }
+    if (await _payments.countPaidRows(committee.id) > 0) {
+      _log.error('Schedule mismatch for ${committee.id} with paid history');
+      throw const BusinessRuleException(
+        'This committee schedule is inconsistent and contains paid history. '
+        'It was not repaired so no payment history could be lost.',
+      );
     }
     _log.warn('Repairing schedule for ${committee.id}');
     await _db.transaction<void>((Transaction txn) async {

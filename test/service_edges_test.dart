@@ -3,6 +3,7 @@ import 'package:committee_manager/core/errors/app_exception.dart';
 import 'package:committee_manager/database/app_database.dart';
 import 'package:committee_manager/di/service_locator.dart';
 import 'package:committee_manager/models/committee_turn.dart';
+import 'package:committee_manager/models/committee.dart';
 import 'package:committee_manager/models/enums.dart';
 import 'package:committee_manager/models/payment.dart';
 import 'package:committee_manager/models/payment_schedule.dart';
@@ -37,7 +38,8 @@ class _FailingTurnRepository implements TurnRepository {
   final TurnRepository _inner;
 
   @override
-  Future<void> update(CommitteeTurn turn) async => throw const _InjectedWriteFailure();
+  Future<void> update(CommitteeTurn turn) async =>
+      throw const _InjectedWriteFailure();
 
   @override
   Future<List<CommitteeTurn>> getByCommittee(String committeeId) =>
@@ -48,10 +50,12 @@ class _FailingTurnRepository implements TurnRepository {
       _inner.getByNumber(committeeId, turnNumber);
 
   @override
-  Future<CommitteeTurn?> getActive(String committeeId) => _inner.getActive(committeeId);
+  Future<CommitteeTurn?> getActive(String committeeId) =>
+      _inner.getActive(committeeId);
 
   @override
-  Future<CommitteeTurn?> getByMember(String memberId) => _inner.getByMember(memberId);
+  Future<CommitteeTurn?> getByMember(String memberId) =>
+      _inner.getByMember(memberId);
 
   @override
   Future<void> insertAll(List<CommitteeTurn> turns) => _inner.insertAll(turns);
@@ -61,10 +65,12 @@ class _FailingTurnRepository implements TurnRepository {
       _inner.updateCollected(turnId, collectedAmount);
 
   @override
-  Future<void> deleteByCommittee(String committeeId) => _inner.deleteByCommittee(committeeId);
+  Future<void> deleteByCommittee(String committeeId) =>
+      _inner.deleteByCommittee(committeeId);
 
   @override
-  Future<int> countCompleted(String committeeId) => _inner.countCompleted(committeeId);
+  Future<int> countCompleted(String committeeId) =>
+      _inner.countCompleted(committeeId);
 
   @override
   Future<int> countAll() => _inner.countAll();
@@ -93,6 +99,7 @@ void main() {
   late CommitteeService committees;
   late PaymentService payments;
   late TurnService turns;
+  late ScheduleService schedules;
   late StatisticsService stats;
 
   setUpAll(() {
@@ -103,11 +110,15 @@ void main() {
   setUp(() async {
     SharedPreferences.setMockInitialValues(<String, Object>{});
     ServiceLocator.instance.reset();
-    db = AppDatabase(factory: databaseFactoryFfi, overridePath: inMemoryDatabasePath);
+    db = AppDatabase(
+      factory: databaseFactoryFfi,
+      overridePath: inMemoryDatabasePath,
+    );
     await ServiceLocator.wire(databaseOverride: db);
     committees = ServiceLocator.instance.get<CommitteeService>();
     payments = ServiceLocator.instance.get<PaymentService>();
     turns = ServiceLocator.instance.get<TurnService>();
+    schedules = ServiceLocator.instance.get<ScheduleService>();
     stats = ServiceLocator.instance.get<StatisticsService>();
   });
 
@@ -132,7 +143,9 @@ void main() {
   }
 
   Future<List<Payment>> unpaid(String committeeId) async =>
-      (await payments.forCommittee(committeeId)).where((Payment p) => !p.isPaid).toList();
+      (await payments.forCommittee(committeeId))
+          .where((Payment p) => !p.isPaid)
+          .toList();
 
   group('changing the amount', () {
     test('is refused once any payment has been recorded', () async {
@@ -152,13 +165,20 @@ void main() {
 
     test('updates every generated row when nothing has been paid', () async {
       final String id = await newCommittee(members: 3, contribution: 1000);
-      expect(await payments.forCommittee(id), hasLength(6), reason: '3 members x 3 periods, recipient skips');
+      expect(
+        await payments.forCommittee(id),
+        hasLength(6),
+        reason: '3 members x 3 periods, recipient skips',
+      );
 
       await committees.updateContribution(id: id, contributionAmount: 2500);
 
       final List<Payment> rows = await payments.forCommittee(id);
       expect(rows.every((Payment p) => p.amount == 2500), isTrue);
-      expect(rows.fold<double>(0, (double s, Payment p) => s + p.amount), 6 * 2500);
+      expect(
+        rows.fold<double>(0, (double s, Payment p) => s + p.amount),
+        6 * 2500,
+      );
     });
 
     test('the turn pool follows the new amount', () async {
@@ -200,7 +220,8 @@ void main() {
       );
       expect((await committees.getById(id)).contributionAmount, 1000);
       expect(
-        (await payments.forCommittee(id)).every((Payment p) => p.amount == 1000),
+        (await payments.forCommittee(id))
+            .every((Payment p) => p.amount == 1000),
         isTrue,
         reason: 'a rejected edit must not have rewritten any row',
       );
@@ -212,10 +233,13 @@ void main() {
       // first write left the committee advertising 2500 while every payment row
       // still said 1000 — a history that quietly stops adding up.
       final String id = await newCommittee(members: 3, contribution: 1000);
-      final PaymentRepository paymentRows = ServiceLocator.instance.get<PaymentRepository>();
-      final ScheduleService realSchedules = ServiceLocator.instance.get<ScheduleService>();
+      final PaymentRepository paymentRows = ServiceLocator.instance
+          .get<PaymentRepository>();
+      final ScheduleService realSchedules = ServiceLocator.instance
+          .get<ScheduleService>();
       final TurnService realTurns = ServiceLocator.instance.get<TurnService>();
-      final PaymentCalculator calculator = ServiceLocator.instance.get<PaymentCalculator>();
+      final PaymentCalculator calculator = ServiceLocator.instance
+          .get<PaymentCalculator>();
 
       final CommitteeService sabotage = CommitteeService(
         committeeRepository: ServiceLocator.instance.get<CommitteeRepository>(),
@@ -223,7 +247,9 @@ void main() {
         paymentRepository: paymentRows,
         scheduleRepository: ServiceLocator.instance.get<ScheduleRepository>(),
         // Turns are written last, so this stands in for any late failure.
-        turnRepository: _FailingTurnRepository(ServiceLocator.instance.get<TurnRepository>()),
+        turnRepository: _FailingTurnRepository(
+          ServiceLocator.instance.get<TurnRepository>(),
+        ),
         scheduleService: realSchedules,
         turnService: realTurns,
         calculator: calculator,
@@ -235,7 +261,9 @@ void main() {
       await expectLater(
         sabotage.updateContribution(id: id, contributionAmount: 2500),
         throwsA(
-          predicate<Object>((Object e) => e.toString().contains('_InjectedWriteFailure')),
+          predicate<Object>(
+            (Object e) => e.toString().contains('_InjectedWriteFailure'),
+          ),
         ),
       );
 
@@ -245,7 +273,8 @@ void main() {
         reason: 'the committee write must have been rolled back',
       );
       expect(
-        (await payments.forCommittee(id)).every((Payment p) => p.amount == 1000),
+        (await payments.forCommittee(id))
+            .every((Payment p) => p.amount == 1000),
         isTrue,
         reason: 'the payment rows must have been rolled back too',
       );
@@ -277,7 +306,10 @@ void main() {
         throwsA(isA<NotFoundException>()),
       );
       await expectLater(
-        committees.updateContribution(id: 'does-not-exist', contributionAmount: 500),
+        committees.updateContribution(
+          id: 'does-not-exist',
+          contributionAmount: 500,
+        ),
         throwsA(isA<NotFoundException>()),
       );
     });
@@ -328,23 +360,104 @@ void main() {
   });
 
   group('unusual but legal committees', () {
-    test('a solo committee is refused, because the member would pay themselves', () async {
+    test(
+      'out-of-order completion keeps the earliest open turn active',
+      () async {
+        final String id = await newCommittee(members: 4);
+        final List<Payment> rows = await payments.forCommittee(id);
+        for (final Payment p in rows.where(
+          (Payment p) => p.periodNumber == 1,
+        )) {
+          await payments.markPaid(paymentId: p.id);
+        }
+        for (final Payment p in rows.where(
+          (Payment p) => p.periodNumber == 3,
+        )) {
+          await payments.markPaid(paymentId: p.id);
+        }
+        final Committee state = await turns.reconcile(id);
+        final List<CommitteeTurn> rotation = await ServiceLocator.instance
+            .get<TurnRepository>()
+            .getByCommittee(id);
+        expect(
+          rotation
+              .firstWhere((CommitteeTurn t) => t.periodNumber == 3)
+              .isCompleted,
+          isTrue,
+        );
+        expect(
+          rotation.firstWhere((CommitteeTurn t) => t.periodNumber == 2).status,
+          TurnStatus.active,
+        );
+        expect(state.completedTurns, 2);
+      },
+    );
+
+    test(
+      'unmarking an early period reopens it and reverses completed status',
+      () async {
+        final String id = await newCommittee(members: 3);
+        final List<Payment> rows = await payments.forCommittee(id);
+        for (final int period in <int>[1, 2]) {
+          for (final Payment p in rows.where(
+            (Payment p) => p.periodNumber == period,
+          )) {
+            await payments.markPaid(paymentId: p.id);
+          }
+        }
+        expect((await committees.getById(id)).completedTurns, 2);
+        await payments.markUnpaid(
+          rows.firstWhere((Payment p) => p.periodNumber == 1).id,
+        );
+        final Committee state = await committees.getById(id);
+        final List<CommitteeTurn> rotation = await ServiceLocator.instance
+            .get<TurnRepository>()
+            .getByCommittee(id);
+        expect(state.status, CommitteeStatus.active);
+        expect(state.completedTurns, 1);
+        expect(
+          rotation.where((CommitteeTurn t) => t.status == TurnStatus.active),
+          hasLength(1),
+        );
+        expect(rotation.first.status, TurnStatus.active);
+      },
+    );
+
+    test('clearRows refuses paid history without deleting rows', () async {
+      final String id = await newCommittee(members: 3);
+      final Payment first = (await payments.forCommittee(id)).first;
+      await payments.markPaid(paymentId: first.id);
       await expectLater(
-        newCommittee(members: 1, contribution: 2500),
-        throwsA(
-          isA<ValidationException>().having(
-            (ValidationException e) => e.fieldErrors,
-            'fieldErrors',
-            contains('members'),
-          ),
-        ),
+        schedules.clearRows(id),
+        throwsA(isA<BusinessRuleException>()),
       );
+      expect(await payments.forCommittee(id), hasLength(6));
     });
+
+    test(
+      'a solo committee is refused, because the member would pay themselves',
+      () async {
+        await expectLater(
+          newCommittee(members: 1, contribution: 2500),
+          throwsA(
+            isA<ValidationException>().having(
+              (ValidationException e) => e.fieldErrors,
+              'fieldErrors',
+              contains('members'),
+            ),
+          ),
+        );
+      },
+    );
 
     test('the smallest legal committee is two members and it completes', () async {
       final String id = await newCommittee(members: 2, contribution: 2500);
       final List<Payment> rows = await payments.forCommittee(id);
-      expect(rows, hasLength(2), reason: '2 members x 2 periods, each paid by the other');
+      expect(
+        rows,
+        hasLength(2),
+        reason: '2 members x 2 periods, each paid by the other',
+      );
 
       // Period 1 settles, then period 2 settles and the committee is finished.
       for (final Payment p in rows.where((Payment p) => p.periodNumber == 1)) {
@@ -362,15 +475,18 @@ void main() {
       expect(done.status, CommitteeStatus.completed);
     });
 
-    test('the smallest committee reports a correct pool and pending total', () async {
-      final String id = await newCommittee(members: 2, contribution: 1000);
-      final dashboard = await stats.forCommittee(id);
-      // Nothing paid yet: 2 rows of 1000 outstanding, pool is (2-1) x 1000.
-      expect(dashboard.totalPending, 2000);
-      expect(dashboard.expectedPool, 1000);
-      expect(dashboard.paidCount, 0);
-      expect(dashboard.pendingCount, 2);
-    });
+    test(
+      'the smallest committee reports a correct pool and pending total',
+      () async {
+        final String id = await newCommittee(members: 2, contribution: 1000);
+        final dashboard = await stats.forCommittee(id);
+        // Nothing paid yet: 2 rows of 1000 outstanding, pool is (2-1) x 1000.
+        expect(dashboard.totalPending, 2000);
+        expect(dashboard.expectedPool, 1000);
+        expect(dashboard.paidCount, 0);
+        expect(dashboard.pendingCount, 2);
+      },
+    );
 
     test('paying everyone in a period advances exactly one turn', () async {
       final String id = await newCommittee(members: 4, contribution: 500);
@@ -378,9 +494,9 @@ void main() {
 
       await turns.reconcile(committee.id);
       // Period 1: the recipient does not pay, so three members fund the pot.
-      for (final Payment p in (await payments.forCommittee(id))
-          .where((Payment p) => p.periodNumber == 1)
-          .toList()) {
+      for (final Payment p in (await payments.forCommittee(
+        id,
+      )).where((Payment p) => p.periodNumber == 1).toList()) {
         await payments.markPaid(paymentId: p.id);
       }
       final after = await turns.reconcile(id);
@@ -391,7 +507,7 @@ void main() {
     test('a large committee generates the full matrix', () async {
       final String id = await newCommittee(members: 30, contribution: 1000);
       // 30 members means 30 periods, and each period is funded by the other 29,
-// so 30 x 29 rows (the recipient of each period skips their own row).
+      // so 30 x 29 rows (the recipient of each period skips their own row).
       expect(await payments.forCommittee(id), hasLength(870));
     });
 
@@ -430,24 +546,31 @@ void main() {
       );
     });
 
-    test('once the backlog is cleared it moves forward to the next period owing', () async {
-      final String id = await newCommittee(
-        members: 3,
-        contribution: 1000,
-        startDate: DateTime.now().subtract(const Duration(days: 180)),
-      );
-      for (final Payment p in (await payments.forCommittee(id))
-          .where((Payment p) => p.periodNumber == 1)
-          .toList()) {
-        await payments.markPaid(paymentId: p.id);
-      }
+    test(
+      'once the backlog is cleared it moves forward to the next period owing',
+      () async {
+        final String id = await newCommittee(
+          members: 3,
+          contribution: 1000,
+          startDate: DateTime.now().subtract(const Duration(days: 180)),
+        );
+        for (final Payment p in (await payments.forCommittee(
+          id,
+        )).where((Payment p) => p.periodNumber == 1).toList()) {
+          await payments.markPaid(paymentId: p.id);
+        }
 
-      final PaymentSchedule landing = (await payments.defaultPeriod(
-        id,
-        await committees.getById(id),
-      ))!;
-      expect(landing.periodNumber, 2, reason: 'period 1 is settled, period 2 is now owed');
-    });
+        final PaymentSchedule landing = (await payments.defaultPeriod(
+          id,
+          await committees.getById(id),
+        ))!;
+        expect(
+          landing.periodNumber,
+          2,
+          reason: 'period 1 is settled, period 2 is now owed',
+        );
+      },
+    );
 
     test('a fully paid committee still opens without error', () async {
       final String id = await newCommittee(
@@ -467,23 +590,26 @@ void main() {
       expect(landing!.periodNumber, inInclusiveRange(1, 2));
     });
 
-    test('the stats agree with the turn, and separately report being behind', () async {
-      final String id = await newCommittee(
-        members: 3,
-        contribution: 1000,
-        startDate: DateTime.now().subtract(const Duration(days: 180)),
-      );
-      final CommitteeStats behind = await stats.forCommittee(id);
+    test(
+      'the stats agree with the turn, and separately report being behind',
+      () async {
+        final String id = await newCommittee(
+          members: 3,
+          contribution: 1000,
+          startDate: DateTime.now().subtract(const Duration(days: 180)),
+        );
+        final CommitteeStats behind = await stats.forCommittee(id);
 
-      // The period we are really collecting is period 1, matching the recipient.
-      expect(behind.currentPeriod, 1);
-      expect(behind.currentRecipientName, isNotNull);
-      // ...while the calendar is six months in, and the app now says so out loud
-      // instead of quietly relabelling the committee as "period 6".
-      expect(behind.expectedPeriod, greaterThan(behind.currentPeriod));
-      expect(behind.isBehindSchedule, isTrue);
-      expect(behind.periodsBehind, greaterThan(0));
-    });
+        // The period we are really collecting is period 1, matching the recipient.
+        expect(behind.currentPeriod, 1);
+        expect(behind.currentRecipientName, isNotNull);
+        // ...while the calendar is six months in, and the app now says so out loud
+        // instead of quietly relabelling the committee as "period 6".
+        expect(behind.expectedPeriod, greaterThan(behind.currentPeriod));
+        expect(behind.isBehindSchedule, isTrue);
+        expect(behind.periodsBehind, greaterThan(0));
+      },
+    );
   });
 
   group('statistics stay honest over a full lifecycle', () {
@@ -510,20 +636,26 @@ void main() {
       expect((await stats.forCommittee(id)).totalCollected, 2000);
     });
 
-    test('the dashboard never claims more money than was ever agreed', () async {
-      final String id = await newCommittee(members: 3, contribution: 1000);
-      // Throw a lot of state at it.
-      final List<Payment> rows = await payments.forCommittee(id);
-      await payments.markPaid(paymentId: rows[0].id);
-      await payments.markPaid(paymentId: rows[1].id);
-      await payments.markUnpaid(rows[0].id);
-      await turns.reconcile(id);
+    test(
+      'the dashboard never claims more money than was ever agreed',
+      () async {
+        final String id = await newCommittee(members: 3, contribution: 1000);
+        // Throw a lot of state at it.
+        final List<Payment> rows = await payments.forCommittee(id);
+        await payments.markPaid(paymentId: rows[0].id);
+        await payments.markPaid(paymentId: rows[1].id);
+        await payments.markUnpaid(rows[0].id);
+        await turns.reconcile(id);
 
-      final committee = await committees.getById(id);
-      final dashboard = await stats.forCommittee(committee.id);
-      final double possible = committee.contributionAmount * rows.length;
-      expect(dashboard.totalCollected, lessThanOrEqualTo(possible));
-      expect(dashboard.totalCollected + dashboard.totalPending, closeTo(possible, 0.001));
-    });
+        final committee = await committees.getById(id);
+        final dashboard = await stats.forCommittee(committee.id);
+        final double possible = committee.contributionAmount * rows.length;
+        expect(dashboard.totalCollected, lessThanOrEqualTo(possible));
+        expect(
+          dashboard.totalCollected + dashboard.totalPending,
+          closeTo(possible, 0.001),
+        );
+      },
+    );
   });
 }

@@ -1,4 +1,4 @@
-      nnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnimport 'package:flutter/material.dart';
+import 'package:flutter/material.dart';
 
 import '../core/utils/app_date_utils.dart';
 
@@ -46,11 +46,20 @@ enum PaymentFrequency {
 
   /// The due date of period number [period] (1-based) starting from [startDate].
   DateTime dueDateForPeriod(int period, DateTime startDate) {
-    DateTime cursor = AppDateUtils.dateOnly(startDate);
-    for (int i = 1; i < period; i++) {
-      cursor = nextDueDate(cursor);
+    final DateTime start = AppDateUtils.dateOnly(startDate);
+    final int offset = period - 1;
+    switch (this) {
+      case PaymentFrequency.daily:
+        return AppDateUtils.addDays(start, offset);
+      case PaymentFrequency.weekly:
+        return AppDateUtils.addDays(start, offset * 7);
+      case PaymentFrequency.biweekly:
+        return AppDateUtils.addDays(start, offset * 14);
+      case PaymentFrequency.monthly:
+        return AppDateUtils.addMonths(start, offset);
+      case PaymentFrequency.quarterly:
+        return AppDateUtils.addMonths(start, offset * 3);
     }
-    return cursor;
   }
 
   /// Human readable name of a period, e.g. "October 2026" or "Week of 12 Oct".

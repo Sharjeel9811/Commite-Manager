@@ -22,8 +22,6 @@ import '../services/cloud_sync_service.dart';
 import '../services/committee_service.dart';
 import '../services/demo_data_service.dart';
 import '../services/implementations/gateway_otp_sender.dart';
-import '../services/join_code_service.dart';
-import '../services/report_service.dart';
 import '../services/implementations/local_biometric_service.dart';
 import '../services/implementations/local_notification_service.dart';
 import '../services/implementations/supabase_otp_sender.dart';
@@ -31,11 +29,13 @@ import '../services/implementations/supabase_service.dart';
 import '../services/interfaces/biometric_service.dart';
 import '../services/interfaces/notification_service.dart';
 import '../services/interfaces/otp_sender.dart';
+import '../services/join_code_service.dart';
 import '../services/member_service.dart';
 import '../services/otp_service.dart';
 import '../services/payment_calculator.dart';
 import '../services/payment_service.dart';
 import '../services/reminder_service.dart';
+import '../services/report_service.dart';
 import '../services/schedule_service.dart';
 import '../services/statistics_service.dart';
 import '../services/turn_service.dart';
@@ -218,7 +218,6 @@ class ServiceLocator {
         notificationService: get<NotificationService>(),
         committeeRepository: get<CommitteeRepository>(),
         paymentRepository: get<PaymentRepository>(),
-        turnRepository: get<TurnRepository>(),
         calculator: calculator,
       ),
     );

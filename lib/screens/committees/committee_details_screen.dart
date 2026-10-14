@@ -55,7 +55,8 @@ class _CommitteeDetailsScreenState extends State<CommitteeDetailsScreen>
 
   @override
   Widget build(BuildContext context) {
-    final CommitteeDetailProvider detail = context.watch<CommitteeDetailProvider>();
+    final CommitteeDetailProvider detail = context
+        .watch<CommitteeDetailProvider>();
     final Committee? committee = detail.committee;
 
     if (detail.isLoading && committee == null) {
@@ -87,8 +88,10 @@ class _CommitteeDetailsScreenState extends State<CommitteeDetailsScreen>
                 value: 'report',
                 child: ListTile(
                   contentPadding: EdgeInsets.zero,
-                  leading: Icon(Icons.picture_as_pdf_rounded,
-                      color: AppColors.brandIndigo),
+                  leading: Icon(
+                    Icons.picture_as_pdf_rounded,
+                    color: AppColors.brandIndigo,
+                  ),
                   title: Text('Generate Report'),
                 ),
               ),
@@ -113,10 +116,14 @@ class _CommitteeDetailsScreenState extends State<CommitteeDetailsScreen>
                 value: 'delete',
                 child: ListTile(
                   contentPadding: EdgeInsets.zero,
-                  leading: Icon(Icons.delete_outline_rounded,
-                      color: AppColors.danger),
-                  title: Text('Delete committee',
-                      style: TextStyle(color: AppColors.danger)),
+                  leading: Icon(
+                    Icons.delete_outline_rounded,
+                    color: AppColors.danger,
+                  ),
+                  title: Text(
+                    'Delete committee',
+                    style: TextStyle(color: AppColors.danger),
+                  ),
                 ),
               ),
             ],
@@ -145,7 +152,8 @@ class _CommitteeDetailsScreenState extends State<CommitteeDetailsScreen>
   Future<void> _onMenu(String value, Committee committee) async {
     // Everything that touches the widget tree is resolved *before* the first
     // await, so no `BuildContext` is ever used across an async gap.
-    final CommitteeDetailProvider detail = context.read<CommitteeDetailProvider>();
+    final CommitteeDetailProvider detail = context
+        .read<CommitteeDetailProvider>();
     final CommitteeProvider committees = context.read<CommitteeProvider>();
     final ScaffoldMessengerState messenger = ScaffoldMessenger.of(context);
     final NavigatorState navigator = Navigator.of(context);
@@ -153,21 +161,16 @@ class _CommitteeDetailsScreenState extends State<CommitteeDetailsScreen>
     if (value == 'report') {
       // Show a loading indicator while generating.
       final ScaffoldMessengerState msg = ScaffoldMessenger.of(context);
-      msg.showSnackBar(
-        const SnackBar(content: Text('Generating report…')),
-      );
+      msg.showSnackBar(const SnackBar(content: Text('Generating report…')));
       try {
-        final CommitteeBundle bundle =
-            await detail.bundleFor(committee.id);
+        final CommitteeBundle bundle = await detail.bundleFor(committee.id);
         if (!mounted) return;
-        await ServiceLocator.instance
-            .get<ReportService>()
-            .generateAndShare(bundle: bundle);
+        await ServiceLocator.instance.get<ReportService>().generateAndShare(
+          bundle: bundle,
+        );
       } catch (e) {
         if (!mounted) return;
-        msg.showSnackBar(
-          SnackBar(content: Text('Could not generate report: $e')),
-        );
+        msg.showSnackBar(SnackBar(content: Text(describeError(e))));
       }
       return;
     }
@@ -196,7 +199,9 @@ class _CommitteeDetailsScreenState extends State<CommitteeDetailsScreen>
                 child: const Text('Cancel'),
               ),
               FilledButton(
-                style: FilledButton.styleFrom(backgroundColor: AppColors.danger),
+                style: FilledButton.styleFrom(
+                  backgroundColor: AppColors.danger,
+                ),
                 onPressed: () => Navigator.pop(context, true),
                 child: const Text('Delete'),
               ),
@@ -220,14 +225,16 @@ class _CommitteeDetailsScreenState extends State<CommitteeDetailsScreen>
   }
 
   Future<void> _editCommittee(BuildContext context, Committee committee) async {
-    final CommitteeDetailProvider detail = context.read<CommitteeDetailProvider>();
+    final CommitteeDetailProvider detail = context
+        .read<CommitteeDetailProvider>();
 
     final ({String name, String? description, double amount})? result =
         await showEditCommitteeSheet(context, committee);
     if (result == null) return;
 
     try {
-      if (result.name != committee.name || result.description != committee.description) {
+      if (result.name != committee.name ||
+          result.description != committee.description) {
         await detail.updateCommitteeDetails(result.name, result.description);
       }
       if (result.amount != committee.contributionAmount) {
@@ -235,7 +242,8 @@ class _CommitteeDetailsScreenState extends State<CommitteeDetailsScreen>
       }
     } on AppException catch (error) {
       if (!context.mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(error.message)));
+      ScaffoldMessenger.of(context)
+          .showSnackBar(SnackBar(content: Text(error.message)));
     }
   }
 }
@@ -282,7 +290,8 @@ class _OverviewTab extends StatelessWidget {
                   value: CurrencyFormatter.format(stats?.totalCollected ?? 0),
                   icon: Icons.trending_up_rounded,
                   tint: AppColors.success,
-                  caption: '${stats?.collectionPercent.round() ?? 0}% of expected',
+                  caption:
+                      '${stats?.collectionPercent.round() ?? 0}% of expected',
                 ),
               ),
             ],
@@ -296,31 +305,34 @@ class _OverviewTab extends StatelessWidget {
                   label:
                       'Turns: ${committee.completedTurns} of ${committee.durationPeriods} complete',
                 ),
-          if (stats?.isBehindSchedule ?? false) ...<Widget>[
-            const SizedBox(height: AppSpacing.md),
-            AppCard(
-              color: AppColors.warning.withValues(alpha: 0.06),
-              borderColor: AppColors.warning.withValues(alpha: 0.4),
-              child: Row(
-                children: <Widget>[
-                  const Icon(Icons.schedule_rounded, color: AppColors.warning),
-                  const SizedBox(width: AppSpacing.md),
-                  Expanded(
-                    child: Text(
-                      // The committee is still genuinely in the period whose
-                      // money has not arrived yet, so say that plainly instead of
-                      // quietly counting the calendar forward.
-                      'Running ${stats!.periodsBehind} period'
-                      '${stats.periodsBehind == 1 ? '' : 's'} behind - still on period '
-                      '${stats.currentPeriod} of ${stats.totalPeriods}',
-                      style: Theme.of(context).textTheme.bodyMedium,
+                if (stats?.isBehindSchedule ?? false) ...<Widget>[
+                  const SizedBox(height: AppSpacing.md),
+                  AppCard(
+                    color: AppColors.warning.withValues(alpha: 0.06),
+                    borderColor: AppColors.warning.withValues(alpha: 0.4),
+                    child: Row(
+                      children: <Widget>[
+                        const Icon(
+                          Icons.schedule_rounded,
+                          color: AppColors.warning,
+                        ),
+                        const SizedBox(width: AppSpacing.md),
+                        Expanded(
+                          child: Text(
+                            // The committee is still genuinely in the period whose
+                            // money has not arrived yet, so say that plainly instead of
+                            // quietly counting the calendar forward.
+                            'Running ${stats!.periodsBehind} period'
+                            '${stats.periodsBehind == 1 ? '' : 's'} behind - still on period '
+                            '${stats.currentPeriod} of ${stats.totalPeriods}',
+                            style: Theme.of(context).textTheme.bodyMedium,
+                          ),
+                        ),
+                      ],
                     ),
                   ),
                 ],
-              ),
-            ),
-          ],
-          const SizedBox(height: AppSpacing.lg),
+                const SizedBox(height: AppSpacing.lg),
                 Row(
                   children: <Widget>[
                     Expanded(
@@ -335,7 +347,9 @@ class _OverviewTab extends StatelessWidget {
                     Expanded(
                       child: StatTile(
                         label: 'Outstanding',
-                        value: CurrencyFormatter.format(stats?.totalPending ?? 0),
+                        value: CurrencyFormatter.format(
+                          stats?.totalPending ?? 0,
+                        ),
                         icon: Icons.money_off_csred_outlined,
                         tint: (stats?.totalPending ?? 0) > 0
                             ? AppColors.warning
@@ -355,7 +369,10 @@ class _OverviewTab extends StatelessWidget {
               borderColor: AppColors.danger.withValues(alpha: 0.4),
               child: Row(
                 children: <Widget>[
-                  const Icon(Icons.warning_amber_rounded, color: AppColors.danger),
+                  const Icon(
+                    Icons.warning_amber_rounded,
+                    color: AppColors.danger,
+                  ),
                   const SizedBox(width: AppSpacing.md),
                   Expanded(
                     child: Text(
@@ -380,21 +397,33 @@ class _OverviewTab extends StatelessWidget {
                   value:
                       '${CurrencyFormatter.format(committee.contributionAmount)} ${committee.frequency.label.toLowerCase()}',
                 ),
-                const Divider(height: 1, indent: AppSpacing.lg, endIndent: AppSpacing.lg),
+                const Divider(
+                  height: 1,
+                  indent: AppSpacing.lg,
+                  endIndent: AppSpacing.lg,
+                ),
                 _InfoRow(
                   icon: Icons.rotate_right_rounded,
                   label: 'Each member receives',
                   value:
                       '${CurrencyFormatter.format(committee.totalPoolPerTurn)} (${committee.memberCount - 1} × ${CurrencyFormatter.format(committee.contributionAmount)})',
                 ),
-                const Divider(height: 1, indent: AppSpacing.lg, endIndent: AppSpacing.lg),
+                const Divider(
+                  height: 1,
+                  indent: AppSpacing.lg,
+                  endIndent: AppSpacing.lg,
+                ),
                 _InfoRow(
                   icon: Icons.event_available_rounded,
                   label: 'Runs',
                   value:
                       '${AppDateUtils.formatDayMonthYear(committee.startDate)} → ${AppDateUtils.formatDayMonthYear(committee.lastDueDate)}',
                 ),
-                const Divider(height: 1, indent: AppSpacing.lg, endIndent: AppSpacing.lg),
+                const Divider(
+                  height: 1,
+                  indent: AppSpacing.lg,
+                  endIndent: AppSpacing.lg,
+                ),
                 _InfoRow(
                   icon: committee.status.icon,
                   label: 'Status',
@@ -404,12 +433,16 @@ class _OverviewTab extends StatelessWidget {
               ],
             ),
           ),
-          if (committee.description != null && committee.description!.isNotEmpty) ...<Widget>[
+          if (committee.description != null &&
+              committee.description!.isNotEmpty) ...<Widget>[
             const SizedBox(height: AppSpacing.lg),
             SectionLabel('Description'),
             const SizedBox(height: AppSpacing.md),
             AppCard(
-              child: Text(committee.description!, style: Theme.of(context).textTheme.bodyMedium),
+              child: Text(
+                committee.description!,
+                style: Theme.of(context).textTheme.bodyMedium,
+              ),
             ),
           ],
           const SizedBox(height: AppSpacing.lg),
@@ -417,8 +450,8 @@ class _OverviewTab extends StatelessWidget {
             children: <Widget>[
               Expanded(
                 child: FilledButton.icon(
-                  onPressed: () =>
-                      Navigator.of(context).pushNamed(AppRoutes.payments, arguments: committee.id),
+                  onPressed: () => Navigator.of(context)
+                      .pushNamed(AppRoutes.payments, arguments: committee.id),
                   icon: const Icon(Icons.payments_rounded),
                   label: const Text('Collect'),
                 ),
@@ -426,8 +459,8 @@ class _OverviewTab extends StatelessWidget {
               const SizedBox(width: AppSpacing.md),
               Expanded(
                 child: OutlinedButton.icon(
-                  onPressed: () =>
-                      Navigator.of(context).pushNamed(AppRoutes.members, arguments: committee.id),
+                  onPressed: () => Navigator.of(context)
+                      .pushNamed(AppRoutes.members, arguments: committee.id),
                   icon: const Icon(Icons.people_alt_rounded),
                   label: const Text('Members'),
                 ),
@@ -441,7 +474,12 @@ class _OverviewTab extends StatelessWidget {
 }
 
 class _InfoRow extends StatelessWidget {
-  const _InfoRow({required this.icon, required this.label, required this.value, this.valueColor});
+  const _InfoRow({
+    required this.icon,
+    required this.label,
+    required this.value,
+    this.valueColor,
+  });
 
   final IconData icon;
   final String label;
@@ -452,7 +490,10 @@ class _InfoRow extends StatelessWidget {
   Widget build(BuildContext context) {
     final ThemeData theme = Theme.of(context);
     return Padding(
-      padding: const EdgeInsets.symmetric(horizontal: AppSpacing.lg, vertical: AppSpacing.md),
+      padding: const EdgeInsets.symmetric(
+        horizontal: AppSpacing.lg,
+        vertical: AppSpacing.md,
+      ),
       child: Row(
         children: <Widget>[
           Icon(icon, size: 18, color: theme.colorScheme.primary),
@@ -511,7 +552,12 @@ class _MembersTab extends StatelessWidget {
         ),
         Expanded(
           child: ListView(
-            padding: const EdgeInsets.fromLTRB(AppSpacing.page, AppSpacing.sm, AppSpacing.page, 88),
+            padding: const EdgeInsets.fromLTRB(
+              AppSpacing.page,
+              AppSpacing.sm,
+              AppSpacing.page,
+              88,
+            ),
             children: <Widget>[
               for (final MemberContributionView view in detail.contributions)
                 if (_matches(view)) _MemberRowTile(view: view, detail: detail),
@@ -560,7 +606,9 @@ class _MemberRowTile extends StatelessWidget {
             child: Text(
               view.member.initials,
               style: theme.textTheme.labelLarge?.copyWith(
-                color: received ? AppColors.success : theme.colorScheme.onPrimaryContainer,
+                color: received
+                    ? AppColors.success
+                    : theme.colorScheme.onPrimaryContainer,
               ),
             ),
           ),
@@ -659,14 +707,22 @@ class _PeriodsTab extends StatelessWidget {
         final PeriodView period = periods[index];
         return AppCard(
           onTap: () =>
-              Navigator.of(context).pushNamed(AppRoutes.payments, arguments: detail.committeeId),
+              Navigator.of(context)
+                  .pushNamed(AppRoutes.payments, arguments: detail.committeeId),
           child: Row(
             children: <Widget>[
               AppIconBadge(
-                icon: period.turnCompleted ? Icons.check_rounded : Icons.schedule_rounded,
-                background: (period.turnCompleted ? AppColors.success : AppColors.brandAmber)
-                    .withValues(alpha: 0.12),
-                foreground: period.turnCompleted ? AppColors.success : AppColors.brandAmber,
+                icon: period.turnCompleted
+                    ? Icons.check_rounded
+                    : Icons.schedule_rounded,
+                background:
+                    (period.turnCompleted
+                            ? AppColors.success
+                            : AppColors.brandAmber)
+                        .withValues(alpha: 0.12),
+                foreground: period.turnCompleted
+                    ? AppColors.success
+                    : AppColors.brandAmber,
               ),
               const SizedBox(width: AppSpacing.md),
               Expanded(
@@ -695,7 +751,9 @@ class _PeriodsTab extends StatelessWidget {
               const SizedBox(width: AppSpacing.sm),
               StatusChip(
                 label: period.isComplete ? 'Complete' : 'Open',
-                color: period.isComplete ? AppColors.success : AppColors.neutral,
+                color: period.isComplete
+                    ? AppColors.success
+                    : AppColors.neutral,
                 compact: true,
               ),
             ],

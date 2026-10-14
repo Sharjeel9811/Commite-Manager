@@ -57,15 +57,16 @@ class SqliteScheduleRepository implements ScheduleRepository {
       _appDatabase.guardAsync('Could not build the collection schedule.', () async {
         if (schedules.isEmpty) return;
         final DatabaseExecutor db = await _appDatabase.executor;
-        final Batch batch = db.batch();
+        // Use individual inserts instead of batch() — batch() is not supported
+        // on a Transaction executor in sqflite, which causes silent failures
+        // when called inside an outer transaction (e.g. committee creation).
         for (final PaymentSchedule schedule in schedules) {
-          batch.insert(
+          await db.insert(
             DbSchema.schedules,
             schedule.toMap(),
             conflictAlgorithm: ConflictAlgorithm.ignore,
           );
         }
-        await batch.commit(noResult: true);
         _log.info('Generated ${schedules.length} periods');
       });
 

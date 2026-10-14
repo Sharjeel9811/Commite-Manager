@@ -89,7 +89,7 @@ CREATE TABLE $committees (
   frequency             TEXT    NOT NULL,
   start_date            INTEGER NOT NULL,
   duration_periods      INTEGER NOT NULL CHECK (duration_periods > 0),
-  member_count          INTEGER NOT NULL CHECK (member_count > 0),
+  member_count          INTEGER NOT NULL CHECK (member_count >= 2),
   current_turn          INTEGER NOT NULL DEFAULT 1 CHECK (current_turn >= 1),
   completed_turns       INTEGER NOT NULL DEFAULT 0 CHECK (completed_turns >= 0),
   status                TEXT    NOT NULL,
@@ -230,6 +230,13 @@ CREATE TABLE $turns (
   static const List<String> upgrade2to3 = <String>[
     'ALTER TABLE $payments ADD COLUMN proof_path TEXT',
   ];
+
+  static const List<String> upgrade3to4 = <String>[
+    // Repairs installs that reached v3 before the proof column was present.
+    'ALTER TABLE $payments ADD COLUMN proof_path TEXT',
+  ];
+
+  static const List<String> upgrade4to5 = <String>[];
 
   // ---------------------------------------------------------------- Lifecycle
 

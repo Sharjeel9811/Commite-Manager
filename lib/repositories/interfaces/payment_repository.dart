@@ -24,6 +24,7 @@ abstract interface class PaymentRepository {
     String? notes,
   });
   Future<void> markUnpaid(String paymentId);
+  Future<int> countPaidRows(String committeeId);
   Future<void> deleteById(String id);
   Future<void> deleteByCommittee(String committeeId);
   Future<double> sumPaid(String committeeId);

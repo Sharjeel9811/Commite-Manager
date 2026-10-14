@@ -1,5 +1,9 @@
+import 'dart:io';
+
 import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
+import 'package:path/path.dart' as p;
+import 'package:path_provider/path_provider.dart';
 import 'package:provider/provider.dart';
 
 import '../../core/theme/app_colors.dart';
@@ -19,7 +23,11 @@ import '../../widgets/state_views.dart';
 /// tap-to-toggle, and only the row being written shows a spinner — the rest of
 /// the list stays interactive while a write is in flight.
 class PaymentsScreen extends StatefulWidget {
-  const PaymentsScreen({required this.committeeId, super.key, this.initialPeriod});
+  const PaymentsScreen({
+    required this.committeeId,
+    super.key,
+    this.initialPeriod,
+  });
 
   final String committeeId;
   final int? initialPeriod;
@@ -36,14 +44,18 @@ class _PaymentsScreenState extends State<PaymentsScreen> {
     super.initState();
     WidgetsBinding.instance.addPostFrameCallback((_) async {
       if (!mounted) return;
-      final CommitteeDetailProvider detail = context.read<CommitteeDetailProvider>();
+      final CommitteeDetailProvider detail = context
+          .read<CommitteeDetailProvider>();
       await detail.open(widget.committeeId);
       if (!mounted) return;
 
       final int period = widget.initialPeriod ?? detail.selectedPeriod;
       detail.selectPeriod(period);
       if (!mounted) return;
-      await context.read<PaymentProvider>().open(committeeId: widget.committeeId, period: period);
+      await context.read<PaymentProvider>().open(
+        committeeId: widget.committeeId,
+        period: period,
+      );
     });
   }
 
@@ -59,16 +71,19 @@ class _PaymentsScreenState extends State<PaymentsScreen> {
   Future<void> _markPaid(PaymentProvider payments, PaymentRow row) async {
     final PaymentMethod? method = await _askMethod();
     if (!mounted || method == null) return;
-    final String? proofPath = await _pickProofIfRequired(method);
+    final String? proofPath = await _proofFor(method);
     if (!mounted || (method.requiresProof && proofPath == null)) return;
     await _recordPaid(payments, row, method: method, proofPath: proofPath);
   }
 
   /// Long-press: same as tap now — consistent behaviour.
-  Future<void> _markPaidWithMethod(PaymentProvider payments, PaymentRow row) async {
+  Future<void> _markPaidWithMethod(
+    PaymentProvider payments,
+    PaymentRow row,
+  ) async {
     final PaymentMethod? method = await _askMethod();
     if (!mounted || method == null) return;
-    final String? proofPath = await _pickProofIfRequired(method);
+    final String? proofPath = await _proofFor(method);
     if (!mounted || (method.requiresProof && proofPath == null)) return;
     await _recordPaid(payments, row, method: method, proofPath: proofPath);
   }
@@ -80,7 +95,8 @@ class _PaymentsScreenState extends State<PaymentsScreen> {
     String? proofPath,
   }) async {
     final ScaffoldMessengerState messenger = ScaffoldMessenger.of(context);
-    final CommitteeDetailProvider detail = context.read<CommitteeDetailProvider>();
+    final CommitteeDetailProvider detail = context
+        .read<CommitteeDetailProvider>();
 
     final String? error = await payments.markPaid(
       row.id,
@@ -94,29 +110,42 @@ class _PaymentsScreenState extends State<PaymentsScreen> {
     if (!mounted) return;
     messenger.showSnackBar(
       SnackBar(
-        content: Text(error ?? '${row.memberName} marked as paid (${method?.label ?? 'cash'})'),
+        content: Text(
+          error ??
+              '${row.memberName} marked as paid (${method?.label ?? 'cash'})',
+        ),
         backgroundColor: error == null ? AppColors.success : null,
       ),
     );
   }
 
-  Future<String?> _pickProofIfRequired(PaymentMethod method) async {
+  Future<String?> _proofFor(PaymentMethod method) async {
     if (!method.requiresProof) return null;
-    final XFile? image = await ImagePicker().pickImage(
+    final XFile? picked = await ImagePicker().pickImage(
       source: ImageSource.gallery,
       imageQuality: 85,
     );
-    if (image == null && mounted) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('A screenshot is required for ${method.label}.')),
-      );
-    }
-    return image?.path;
+    if (picked == null) return null;
+    final Directory directory = await getApplicationDocumentsDirectory();
+    final Directory proofs = Directory(
+      p.join(directory.path, 'payment_proofs'),
+    );
+    await proofs.create(recursive: true);
+    final String extension = p.extension(picked.path).isEmpty
+        ? '.jpg'
+        : p.extension(picked.path);
+    final String target = p.join(
+      proofs.path,
+      '${DateTime.now().microsecondsSinceEpoch}$extension',
+    );
+    await File(picked.path).copy(target);
+    return target;
   }
 
   Future<void> _markUnpaid(PaymentProvider payments, PaymentRow row) async {
     final ScaffoldMessengerState messenger = ScaffoldMessenger.of(context);
-    final CommitteeDetailProvider detail = context.read<CommitteeDetailProvider>();
+    final CommitteeDetailProvider detail = context
+        .read<CommitteeDetailProvider>();
 
     final String? error = await payments.markUnpaid(row.id);
     if (!mounted) return;
@@ -143,7 +172,8 @@ class _PaymentsScreenState extends State<PaymentsScreen> {
           children: <Widget>[
             const SizedBox(height: AppSpacing.md),
             Container(
-              width: 40, height: 4,
+              width: 40,
+              height: 4,
               decoration: BoxDecoration(
                 color: Theme.of(ctx).colorScheme.outlineVariant,
                 borderRadius: BorderRadius.circular(2),
@@ -165,12 +195,14 @@ class _PaymentsScreenState extends State<PaymentsScreen> {
             const Divider(),
             // Online payments
             Padding(
-              padding: const EdgeInsets.symmetric(horizontal: AppSpacing.xl, vertical: AppSpacing.xs),
+              padding: const EdgeInsets.symmetric(
+                horizontal: AppSpacing.xl,
+                vertical: AppSpacing.xs,
+              ),
               child: Text(
                 'Online / آن لائن',
-                style: Theme.of(ctx).textTheme.labelSmall?.copyWith(
-                  color: Theme.of(ctx).colorScheme.primary,
-                ),
+                style: Theme.of(ctx).textTheme.labelSmall
+                    ?.copyWith(color: Theme.of(ctx).colorScheme.primary),
               ),
             ),
             for (final PaymentMethod m in <PaymentMethod>[
@@ -195,12 +227,14 @@ class _PaymentsScreenState extends State<PaymentsScreen> {
             const Divider(),
             // Offline payments
             Padding(
-              padding: const EdgeInsets.symmetric(horizontal: AppSpacing.xl, vertical: AppSpacing.xs),
+              padding: const EdgeInsets.symmetric(
+                horizontal: AppSpacing.xl,
+                vertical: AppSpacing.xs,
+              ),
               child: Text(
                 'Offline / آف لائن',
-                style: Theme.of(ctx).textTheme.labelSmall?.copyWith(
-                  color: Theme.of(ctx).colorScheme.primary,
-                ),
+                style: Theme.of(ctx).textTheme.labelSmall
+                    ?.copyWith(color: Theme.of(ctx).colorScheme.primary),
               ),
             ),
             for (final PaymentMethod m in <PaymentMethod>[
@@ -228,8 +262,30 @@ class _PaymentsScreenState extends State<PaymentsScreen> {
   }
 
   Future<void> _markAllPaid(PaymentProvider payments) async {
+    final bool? confirmed = await showDialog<bool>(
+      context: context,
+      builder: (BuildContext dialogContext) => AlertDialog(
+        title: const Text('Mark everyone as paid?'),
+        content: const Text(
+          'This will mark every unpaid member in the selected period as paid. '
+          'You can undo individual payments later.',
+        ),
+        actions: <Widget>[
+          TextButton(
+            onPressed: () => Navigator.pop(dialogContext, false),
+            child: const Text('Cancel'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(dialogContext, true),
+            child: const Text('Mark all paid'),
+          ),
+        ],
+      ),
+    );
+    if (confirmed != true || !mounted) return;
     final ScaffoldMessengerState messenger = ScaffoldMessenger.of(context);
-    final CommitteeDetailProvider detail = context.read<CommitteeDetailProvider>();
+    final CommitteeDetailProvider detail = context
+        .read<CommitteeDetailProvider>();
 
     final String? error = await payments.markWholePeriodPaid();
     if (!mounted) return;
@@ -246,7 +302,8 @@ class _PaymentsScreenState extends State<PaymentsScreen> {
   @override
   Widget build(BuildContext context) {
     final ThemeData theme = Theme.of(context);
-    final CommitteeDetailProvider detail = context.watch<CommitteeDetailProvider>();
+    final CommitteeDetailProvider detail = context
+        .watch<CommitteeDetailProvider>();
     final PaymentProvider payments = context.watch<PaymentProvider>();
     final String committeeName = detail.committee?.name ?? 'Committee';
 
@@ -260,7 +317,9 @@ class _PaymentsScreenState extends State<PaymentsScreen> {
       ),
       floatingActionButton: payments.canMarkAllPaid
           ? FloatingActionButton.extended(
-              onPressed: payments.isLoading ? null : () => _markAllPaid(payments),
+              onPressed: payments.isLoading
+                  ? null
+                  : () => _markAllPaid(payments),
               icon: const Icon(Icons.done_all_rounded),
               label: const Text('All paid'),
             )
@@ -302,8 +361,13 @@ class _PaymentsScreenState extends State<PaymentsScreen> {
     );
   }
 
-  Widget _list(BuildContext context, PaymentProvider payments, ThemeData theme) {
-    if (payments.isLoading && payments.rows.isEmpty) return const LoadingState();
+  Widget _list(
+    BuildContext context,
+    PaymentProvider payments,
+    ThemeData theme,
+  ) {
+    if (payments.isLoading && payments.rows.isEmpty)
+      return const LoadingState();
     if (payments.error != null && payments.rows.isEmpty) {
       return ErrorState(message: payments.error!, onRetry: payments.refresh);
     }
@@ -318,14 +382,21 @@ class _PaymentsScreenState extends State<PaymentsScreen> {
     }
 
     return ListView.builder(
-      padding: const EdgeInsets.fromLTRB(AppSpacing.page, AppSpacing.sm, AppSpacing.page, 96),
+      padding: const EdgeInsets.fromLTRB(
+        AppSpacing.page,
+        AppSpacing.sm,
+        AppSpacing.page,
+        96,
+      ),
       itemCount: rows.length,
       itemBuilder: (BuildContext context, int index) {
         final PaymentRow row = rows[index];
         return _PaymentTile(
           row: row,
           busy: payments.isBusy(row.id),
-          onTap: () => row.isPaid ? _markUnpaid(payments, row) : _markPaid(payments, row),
+          onTap: () => row.isPaid
+              ? _markUnpaid(payments, row)
+              : _markPaid(payments, row),
           onLongPress: row.isPaid
               ? null
               : () => _markPaidWithMethod(payments, row),
@@ -354,13 +425,18 @@ class _PeriodStrip extends StatelessWidget {
       height: 52,
       child: ListView.separated(
         scrollDirection: Axis.horizontal,
-        padding: const EdgeInsets.symmetric(horizontal: AppSpacing.page, vertical: AppSpacing.sm),
+        padding: const EdgeInsets.symmetric(
+          horizontal: AppSpacing.page,
+          vertical: AppSpacing.sm,
+        ),
         itemCount: detail.periods.length,
         separatorBuilder: (_, _) => const SizedBox(width: AppSpacing.sm),
         itemBuilder: (BuildContext context, int index) {
           final PeriodView period = detail.periods[index];
           final bool selected = period.periodNumber == payments.period;
-          final Color accent = period.isComplete ? AppColors.success : AppColors.brandAmber;
+          final Color accent = period.isComplete
+              ? AppColors.success
+              : AppColors.brandAmber;
 
           return ChoiceChip(
             selected: selected,
@@ -370,7 +446,11 @@ class _PeriodStrip extends StatelessWidget {
               await payments.changePeriod(period.periodNumber);
             },
             avatar: period.isComplete
-                ? const Icon(Icons.check_circle_rounded, size: 15, color: AppColors.success)
+                ? const Icon(
+                    Icons.check_circle_rounded,
+                    size: 15,
+                    color: AppColors.success,
+                  )
                 : Icon(Icons.circle, size: 11, color: accent),
             label: Text('P${period.periodNumber}'),
             labelStyle: theme.textTheme.labelMedium?.copyWith(
@@ -394,7 +474,12 @@ class _CollectionSummary extends StatelessWidget {
     final ThemeData theme = Theme.of(context);
 
     return AppCard(
-      margin: const EdgeInsets.fromLTRB(AppSpacing.page, AppSpacing.md, AppSpacing.page, 0),
+      margin: const EdgeInsets.fromLTRB(
+        AppSpacing.page,
+        AppSpacing.md,
+        AppSpacing.page,
+        0,
+      ),
       child: Column(
         children: <Widget>[
           Row(
@@ -410,7 +495,9 @@ class _CollectionSummary extends StatelessWidget {
                 child: _Metric(
                   label: 'Outstanding',
                   value: CurrencyFormatter.format(payments.outstandingAmount),
-                  color: payments.outstandingAmount > 0 ? AppColors.warning : AppColors.neutral,
+                  color: payments.outstandingAmount > 0
+                      ? AppColors.warning
+                      : AppColors.neutral,
                 ),
               ),
               Expanded(
@@ -425,8 +512,12 @@ class _CollectionSummary extends StatelessWidget {
           const SizedBox(height: AppSpacing.md),
           AppProgressBar(
             value: payments.completionPercent / 100,
-            label: payments.overdueCount > 0 ? '${payments.overdueCount} overdue' : null,
-            color: payments.overdueCount > 0 ? AppColors.danger : AppColors.success,
+            label: payments.overdueCount > 0
+                ? '${payments.overdueCount} overdue'
+                : null,
+            color: payments.overdueCount > 0
+                ? AppColors.danger
+                : AppColors.success,
           ),
         ],
       ),
@@ -435,7 +526,11 @@ class _CollectionSummary extends StatelessWidget {
 }
 
 class _Metric extends StatelessWidget {
-  const _Metric({required this.label, required this.value, required this.color});
+  const _Metric({
+    required this.label,
+    required this.value,
+    required this.color,
+  });
 
   final String label;
   final String value;
@@ -454,7 +549,10 @@ class _Metric extends StatelessWidget {
           alignment: Alignment.centerLeft,
           child: Text(
             value,
-            style: theme.textTheme.titleMedium?.copyWith(color: color, fontWeight: FontWeight.w700),
+            style: theme.textTheme.titleMedium?.copyWith(
+              color: color,
+              fontWeight: FontWeight.w700,
+            ),
           ),
         ),
       ],
@@ -519,7 +617,10 @@ class _PaymentTile extends StatelessWidget {
       onLongPress: busy ? null : onLongPress,
       margin: const EdgeInsets.only(bottom: AppSpacing.sm),
       color: paid ? AppColors.success.withValues(alpha: 0.05) : null,
-      padding: const EdgeInsets.symmetric(horizontal: AppSpacing.md, vertical: AppSpacing.sm),
+      padding: const EdgeInsets.symmetric(
+        horizontal: AppSpacing.md,
+        vertical: AppSpacing.sm,
+      ),
       child: Row(
         children: <Widget>[
           AnimatedContainer(
@@ -531,7 +632,9 @@ class _PaymentTile extends StatelessWidget {
               border: Border.all(color: accent, width: 2),
               borderRadius: BorderRadius.circular(AppRadius.sm),
             ),
-            child: paid ? const Icon(Icons.check_rounded, size: 18, color: Colors.white) : null,
+            child: paid
+                ? const Icon(Icons.check_rounded, size: 18, color: Colors.white)
+                : null,
           ),
           const SizedBox(width: AppSpacing.md),
           Expanded(
@@ -544,17 +647,32 @@ class _PaymentTile extends StatelessWidget {
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
                 ),
+                if (paid && row.proofPath != null)
+                  TextButton.icon(
+                    onPressed: () => _showProof(context, row.proofPath!),
+                    icon: const Icon(Icons.receipt_long_rounded, size: 16),
+                    label: const Text('View proof'),
+                    style: TextButton.styleFrom(
+                      padding: EdgeInsets.zero,
+                      minimumSize: const Size(0, 28),
+                      tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                    ),
+                  ),
                 const SizedBox(height: 2),
                 Text(
                   paid
                       ? 'Paid ${AppDateUtils.formatDayMonth(row.paidDate ?? row.dueDate)}'
-                          '${row.method != null ? ' • ${row.method!.label}' : ''}'
-                      : (row.isOverdue ? row.overdueLabel : AppDateUtils.relativeDueText(row.dueDate)),
+                            '${row.method != null ? ' • ${row.method!.label}' : ''}'
+                      : (row.isOverdue
+                            ? row.overdueLabel
+                            : AppDateUtils.relativeDueText(row.dueDate)),
                   style: theme.textTheme.bodySmall?.copyWith(
                     color: paid
                         ? AppColors.success
                         : (row.isOverdue
-                              ? (row.isSeverelyOverdue ? AppColors.brandRose : AppColors.danger)
+                              ? (row.isSeverelyOverdue
+                                    ? AppColors.brandRose
+                                    : AppColors.danger)
                               : null),
                   ),
                 ),
@@ -563,17 +681,47 @@ class _PaymentTile extends StatelessWidget {
           ),
           const SizedBox(width: AppSpacing.sm),
           if (busy)
-            const SizedBox(width: 18, height: 18, child: CircularProgressIndicator(strokeWidth: 2))
+            const SizedBox(
+              width: 18,
+              height: 18,
+              child: CircularProgressIndicator(strokeWidth: 2),
+            )
           else
             Column(
               crossAxisAlignment: CrossAxisAlignment.end,
               children: <Widget>[
-                Text(CurrencyFormatter.format(row.amount), style: theme.textTheme.titleSmall),
+                Text(
+                  CurrencyFormatter.format(row.amount),
+                  style: theme.textTheme.titleSmall,
+                ),
                 const SizedBox(height: 2),
-                StatusChip(label: row.statusLabel, color: accent, compact: true),
+                StatusChip(
+                  label: row.statusLabel,
+                  color: accent,
+                  compact: true,
+                ),
               ],
             ),
         ],
+      ),
+    );
+  }
+
+  void _showProof(BuildContext context, String path) {
+    showDialog<void>(
+      context: context,
+      builder: (BuildContext dialogContext) => Dialog(
+        child: InteractiveViewer(
+          child: Image.file(
+            File(path),
+            errorBuilder: (_, _, _) => const Padding(
+              padding: EdgeInsets.all(24),
+              child: Text(
+                'Payment proof is no longer available on this device.',
+              ),
+            ),
+          ),
+        ),
       ),
     );
   }
