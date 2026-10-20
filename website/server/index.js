@@ -34,6 +34,11 @@ app.get('/api/payments', async (_req, res) => {
   res.json(data)
 })
 
-const port = process.env.PORT || 5000
 if (process.env.MONGODB_URI) mongoose.connect(process.env.MONGODB_URI).then(() => console.log('MongoDB connected')).catch((error) => console.error('MongoDB connection failed:', error.message))
-app.listen(port, () => console.log(`API running on port ${port}`))
+
+if (process.env.NODE_ENV !== 'production') {
+  const port = process.env.PORT || 5000
+  app.listen(port, () => console.log(`API running on port ${port}`))
+}
+
+export default app
