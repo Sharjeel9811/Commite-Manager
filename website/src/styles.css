@@ -1,0 +1,9 @@
+@import url('https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&family=Space+Grotesk:wght@500;600;700&display=swap');
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+body { @apply bg-[#f8f9fc] text-ink antialiased; font-family: 'DM Sans', sans-serif; }
+h1,h2,h3,h4 { font-family: 'Space Grotesk', sans-serif; }
+button { transition: all .2s ease; }
+.nav-active { @apply bg-indigo text-white shadow-lg shadow-indigo/20; }
+.scrollbar::-webkit-scrollbar { display: none; }
